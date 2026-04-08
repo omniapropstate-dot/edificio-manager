@@ -50,20 +50,29 @@ input, select, textarea { font-family: 'Inter', sans-serif; }
 
 /* Mobile */
 .mobile-header { display: none; }
+.bottom-nav { display: none; }
 @media (max-width: 768px) {
   .mobile-header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 18px; background: ${C.sb}; border-bottom: 1px solid ${C.cb};
+    padding: 12px 16px; background: ${C.sb}; border-bottom: 1px solid ${C.cb};
     position: sticky; top: 0; z-index: 100;
   }
   .app-body { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
-  .sidebar {
-    position: fixed; top: 0; left: 0; z-index: 200; height: 100vh;
-    transform: translateX(-100%); width: 260px;
+  .sidebar { display: none !important; }
+  .main-content { padding: 14px 12px; padding-bottom: 80px; }
+  .bottom-nav {
+    display: flex; position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+    background: ${C.sb}; border-top: 1px solid ${C.cb};
+    padding: 6px 0 10px;
   }
-  .sidebar.open { transform: translateX(0); }
-  .sidebar-overlay { display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 150; }
-  .main-content { padding: 16px 14px; }
+  .bottom-nav-item {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    gap: 3px; padding: 6px 4px; cursor: pointer; transition: all 0.15s;
+    border: none; background: none;
+  }
+  .bottom-nav-item .nav-icon { font-size: 20px; line-height: 1; }
+  .bottom-nav-item .nav-label { font-size: 10px; font-weight: 500; color: ${C.mu}; }
+  .bottom-nav-item.active .nav-label { color: ${C.ac}; }
 }
 
 /* Navegación */
@@ -1275,18 +1284,17 @@ export default function App() {
       <Toast toast={toast} onClose={() => setToast(null)} />
       {!session ? <Login onLogin={load} /> : (
         <div className="app-shell">
-          {/* Mobile header */}
+
+          {/* Header móvil */}
           <div className="mobile-header">
-            <button className="hamburger" onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
-            <span style={{ fontSize: 14, fontWeight: 600, color: C.wh }}>Edificio Manager</span>
-            <span style={{ width: 32 }} />
+            <span style={{ fontSize: 14, fontWeight: 700, color: C.wh }}>🏢 Edificio Manager</span>
+            <button className="btn btn-ghost btn-sm" onClick={() => supabase.auth.signOut()} style={{ fontSize: 11, padding: "4px 10px" }}>Salir</button>
           </div>
 
           <div className="app-body" style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-            {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
 
-            {/* Sidebar */}
-            <div className={`sidebar ${sidebarOpen ? "open" : ""}`}>
+            {/* Sidebar — solo desktop */}
+            <div className="sidebar">
               <div style={{ padding: "8px 6px 20px", borderBottom: `1px solid ${C.cb}`, marginBottom: 12 }}>
                 <p style={{ fontSize: 16, fontWeight: 700, color: C.wh, letterSpacing: "-0.3px" }}>Edificio Manager</p>
                 <p style={{ fontSize: 11, color: C.mu, marginTop: 2 }}>Centro Comercial Limax</p>
@@ -1315,6 +1323,17 @@ export default function App() {
               {tab === "configuracion" && <Configuracion inquilinos={data.inquilinos} contratos={data.contratos} pagos={data.pagos} reload={load} showToast={showToast} />}
             </div>
           </div>
+
+          {/* Bottom nav — solo móvil */}
+          <div className="bottom-nav">
+            {NAV.map(n => (
+              <button key={n.id} className={`bottom-nav-item ${tab === n.id ? "active" : ""}`} onClick={() => changeTab(n.id)}>
+                <span className="nav-icon">{n.icon}</span>
+                <span className="nav-label">{n.label}</span>
+              </button>
+            ))}
+          </div>
+
         </div>
       )}
     </>
