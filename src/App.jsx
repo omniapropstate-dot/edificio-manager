@@ -39,38 +39,39 @@ input, select, textarea { font-family: 'Inter', sans-serif; }
 ::-webkit-scrollbar-thumb { background: ${C.cb}; border-radius: 4px; }
 
 /* Layout principal */
-.app-shell { display: flex; height: 100vh; overflow: hidden; }
+.app-shell { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 .sidebar {
   width: 220px; background: ${C.sb}; border-right: 1px solid ${C.cb};
   display: flex; flex-direction: column; padding: 20px 10px;
-  flex-shrink: 0; height: 100vh; overflow-y: auto; transition: transform 0.25s ease;
+  flex-shrink: 0; height: 100vh; overflow-y: auto;
 }
+.app-body { display: flex; flex: 1; overflow: hidden; }
 .main-content { flex: 1; overflow-y: auto; padding: 24px 20px; }
-.sidebar-overlay { display: none; }
 
 /* Mobile */
 .mobile-header { display: none; }
 .bottom-nav { display: none; }
 @media (max-width: 768px) {
+  .app-shell { flex-direction: column; }
+  .app-body { flex-direction: column; }
   .mobile-header {
     display: flex; align-items: center; justify-content: space-between;
     padding: 12px 16px; background: ${C.sb}; border-bottom: 1px solid ${C.cb};
-    position: sticky; top: 0; z-index: 100;
+    flex-shrink: 0;
   }
-  .app-body { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
   .sidebar { display: none !important; }
-  .main-content { padding: 14px 12px; padding-bottom: 80px; }
+  .main-content { padding: 14px 12px 90px 12px; height: 100%; }
   .bottom-nav {
     display: flex; position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
     background: ${C.sb}; border-top: 1px solid ${C.cb};
-    padding: 6px 0 10px;
+    padding: 8px 0 12px;
   }
   .bottom-nav-item {
     flex: 1; display: flex; flex-direction: column; align-items: center;
-    gap: 3px; padding: 6px 4px; cursor: pointer; transition: all 0.15s;
+    gap: 3px; padding: 4px 2px; cursor: pointer; transition: all 0.15s;
     border: none; background: none;
   }
-  .bottom-nav-item .nav-icon { font-size: 20px; line-height: 1; }
+  .bottom-nav-item .nav-icon { font-size: 22px; line-height: 1; }
   .bottom-nav-item .nav-label { font-size: 10px; font-weight: 500; color: ${C.mu}; }
   .bottom-nav-item.active .nav-label { color: ${C.ac}; }
 }
@@ -1285,16 +1286,58 @@ export default function App() {
       {!session ? <Login onLogin={load} /> : (
         <div className="app-shell">
 
-          {/* Header móvil */}
+          {/* Header — solo móvil */}
           <div className="mobile-header">
             <span style={{ fontSize: 14, fontWeight: 700, color: C.wh }}>🏢 Edificio Manager</span>
             <button className="btn btn-ghost btn-sm" onClick={() => supabase.auth.signOut()} style={{ fontSize: 11, padding: "4px 10px" }}>Salir</button>
           </div>
 
-          <div className="app-body" style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+          {/* Cuerpo: sidebar + contenido */}
+          <div className="app-body">
 
             {/* Sidebar — solo desktop */}
             <div className="sidebar">
+              <div style={{ padding: "8px 6px 20px", borderBottom: `1px solid ${C.cb}`, marginBottom: 12 }}>
+                <p style={{ fontSize: 16, fontWeight: 700, color: C.wh, letterSpacing: "-0.3px" }}>Edificio Manager</p>
+                <p style={{ fontSize: 11, color: C.mu, marginTop: 2 }}>Centro Comercial Limax</p>
+              </div>
+              {NAV.map(n => (
+                <div key={n.id} className={`nav-item ${tab === n.id ? "active" : ""}`} onClick={() => changeTab(n.id)}>
+                  <span style={{ fontSize: 14 }}>{n.icon}</span>
+                  <span>{n.label}</span>
+                </div>
+              ))}
+              <div style={{ marginTop: "auto", padding: "12px 6px", borderTop: `1px solid ${C.cb}` }}>
+                <button className="btn btn-ghost btn-sm" style={{ width: "100%", justifyContent: "center" }} onClick={() => supabase.auth.signOut()}>
+                  Cerrar sesión
+                </button>
+              </div>
+            </div>
+
+            {/* Contenido principal */}
+            <div className="main-content">
+              {tab === "dashboard"     && <Dashboard {...data} />}
+              {tab === "locales"       && <Locales inquilinos={data.inquilinos} contratos={data.contratos} pagos={data.pagos} reload={load} showToast={showToast} />}
+              {tab === "finanzas"      && <Finanzas pagos={data.pagos} contratos={data.contratos} inquilinos={data.inquilinos} expensas={data.expensas} reload={load} showToast={showToast} />}
+              {tab === "operaciones"   && <Operaciones activos={data.activos} activos_gastos={data.activos_gastos} mantenimiento={data.mantenimiento} reload={load} showToast={showToast} />}
+              {tab === "configuracion" && <Configuracion inquilinos={data.inquilinos} contratos={data.contratos} pagos={data.pagos} reload={load} showToast={showToast} />}
+            </div>
+          </div>
+
+          {/* Bottom nav — solo móvil */}
+          <div className="bottom-nav">
+            {NAV.map(n => (
+              <button key={n.id} className={`bottom-nav-item ${tab === n.id ? "active" : ""}`} onClick={() => changeTab(n.id)}>
+                <span className="nav-icon">{n.icon}</span>
+                <span className="nav-label">{n.label}</span>
+              </button>
+            ))}
+          </div>
+
+        </div>
+      )}
+    </>
+  );
               <div style={{ padding: "8px 6px 20px", borderBottom: `1px solid ${C.cb}`, marginBottom: 12 }}>
                 <p style={{ fontSize: 16, fontWeight: 700, color: C.wh, letterSpacing: "-0.3px" }}>Edificio Manager</p>
                 <p style={{ fontSize: 11, color: C.mu, marginTop: 2 }}>Centro Comercial Limax</p>
