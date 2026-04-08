@@ -1338,47 +1338,4 @@ export default function App() {
       )}
     </>
   );
-              <div style={{ padding: "8px 6px 20px", borderBottom: `1px solid ${C.cb}`, marginBottom: 12 }}>
-                <p style={{ fontSize: 16, fontWeight: 700, color: C.wh, letterSpacing: "-0.3px" }}>Edificio Manager</p>
-                <p style={{ fontSize: 11, color: C.mu, marginTop: 2 }}>Centro Comercial Limax</p>
-              </div>
-
-              {NAV.map(n => (
-                <div key={n.id} className={`nav-item ${tab === n.id ? "active" : ""}`} onClick={() => changeTab(n.id)}>
-                  <span style={{ fontSize: 14 }}>{n.icon}</span>
-                  <span>{n.label}</span>
-                </div>
-              ))}
-
-              <div style={{ marginTop: "auto", padding: "12px 6px", borderTop: `1px solid ${C.cb}` }}>
-                <button className="btn btn-ghost btn-sm" style={{ width: "100%", justifyContent: "center" }} onClick={() => supabase.auth.signOut()}>
-                  Cerrar sesión
-                </button>
-              </div>
-            </div>
-
-            {/* Contenido principal */}
-            <div className="main-content">
-              {tab === "dashboard"     && <Dashboard {...data} />}
-              {tab === "locales"       && <Locales inquilinos={data.inquilinos} contratos={data.contratos} pagos={data.pagos} reload={load} showToast={showToast} />}
-              {tab === "finanzas"      && <Finanzas pagos={data.pagos} contratos={data.contratos} inquilinos={data.inquilinos} expensas={data.expensas} reload={load} showToast={showToast} />}
-              {tab === "operaciones"   && <Operaciones activos={data.activos} activos_gastos={data.activos_gastos} mantenimiento={data.mantenimiento} reload={load} showToast={showToast} />}
-              {tab === "configuracion" && <Configuracion inquilinos={data.inquilinos} contratos={data.contratos} pagos={data.pagos} reload={load} showToast={showToast} />}
-            </div>
-          </div>
-
-          {/* Bottom nav — solo móvil */}
-          <div className="bottom-nav">
-            {NAV.map(n => (
-              <button key={n.id} className={`bottom-nav-item ${tab === n.id ? "active" : ""}`} onClick={() => changeTab(n.id)}>
-                <span className="nav-icon">{n.icon}</span>
-                <span className="nav-label">{n.label}</span>
-              </button>
-            ))}
-          </div>
-
-        </div>
-      )}
-    </>
-  );
 }
