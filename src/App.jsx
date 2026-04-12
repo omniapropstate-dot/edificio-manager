@@ -1256,8 +1256,8 @@ export default function App() {
     const [i, c, p, e, m, a, ag] = await Promise.all([
       supabase.from("inquilinos").select("*").order("created_at"),
       supabase.from("contratos").select("*").order("created_at"),
-      supabase.from("pagos").select("*").order("created_at"),
-      supabase.from("expensas").select("*").order("created_at"),
+      supabase.from("pagos").select("*").order("created_at").limit(10000),
+      supabase.from("expensas").select("*").order("created_at").limit(10000),
       supabase.from("mantenimiento").select("*").order("created_at"),
       supabase.from("activos").select("*").order("created_at"),
       supabase.from("activos_gastos").select("*").order("fecha"),
