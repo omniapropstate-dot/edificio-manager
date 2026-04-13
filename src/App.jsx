@@ -342,8 +342,8 @@ function Dashboard({ inquilinos, contratos, pagos, expensas, mantenimiento }) {
   const [mes, setMes] = useState(now.getMonth() + 1);
   const [anio, setAnio] = useState(now.getFullYear());
 
-  const pMes = pagos.filter(p => p.mes === mes && p.anio === anio);
-  const eMes = expensas.filter(e => e.mes === mes && e.anio === anio);
+  const pMes = pagos.filter(p => Number(p.mes) === mes && Number(p.anio) === anio);
+  const eMes = expensas.filter(e => Number(e.mes) === mes && Number(e.anio) === anio);
   const cobrado = pMes.filter(p => p.estado === "pagado").reduce((a, b) => a + Number(b.monto), 0);
   const pendiente = pMes.filter(p => p.estado === "pendiente").reduce((a, b) => a + Number(b.monto), 0);
   const gastos = eMes.reduce((a, b) => a + Number(b.monto), 0);
