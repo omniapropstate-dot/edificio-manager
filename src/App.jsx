@@ -345,7 +345,11 @@ function Dashboard({ inquilinos, contratos, pagos, expensas, mantenimiento }) {
   const pMes = pagos.filter(p => Number(p.mes) === mes && Number(p.anio) === anio);
   const eMes = expensas.filter(e => Number(e.mes) === mes && Number(e.anio) === anio);
   const cobrado = pMes.filter(p => p.estado === "pagado").reduce((a, b) => a + Number(b.monto), 0);
-  const pendiente = pMes.filter(p => p.estado === "pendiente").reduce((a, b) => a + Number(b.monto), 0);
+  const pendiente = activos.reduce((acc, c) => {
+  const p = pMes.find(x => x.contrato_id === c.id && x.tipo === "alquiler");
+  if (!p || p.estado !== "pagado") return acc + Number(c.monto);
+  return acc;
+}, 0);
   const gastos = eMes.reduce((a, b) => a + Number(b.monto), 0);
   const neto = cobrado - gastos;
   const activos = contratos.filter(c => c.estado === "activo");
