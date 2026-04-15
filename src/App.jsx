@@ -490,23 +490,23 @@ function Locales({ inquilinos, contratos, pagos, reload, showToast }) {
 
   const getEstadoLocal = (contrato) => {
     if (!contrato) return "sin-contrato";
-    const p = pagos.find(x => x.contrato_id === contrato.id && x.mes === mes && x.anio === anio && x.tipo === "alquiler");
+    const p = pagos.find(x => x.contrato_id === contrato.id && Number(x.mes) === mes && Number(x.anio) === anio && x.tipo === "alquiler");
     return p?.estado === "pagado" ? "pagado" : "pendiente";
   };
 
   const cobradoMes = contratos.filter(c => c.estado === "activo").reduce((acc, c) => {
-    const p = pagos.find(x => x.contrato_id === c.id && x.mes === mes && x.anio === anio && x.estado === "pagado");
+    const p = pagos.find(x => x.contrato_id === c.id && Number(x.mes) === mes && Number(x.anio) === anio && x.estado === "pagado");
     return acc + (p ? Number(p.monto) : 0);
   }, 0);
 
   const pendienteMes = contratos.filter(c => c.estado === "activo").reduce((acc, c) => {
-    const p = pagos.find(x => x.contrato_id === c.id && x.mes === mes && x.anio === anio && x.tipo === "alquiler");
+    const p = pagos.find(x => x.contrato_id === c.id && Number(x.mes) === mes && Number(x.anio) === anio && x.tipo === "alquiler");
     if (!p || p.estado !== "pagado") return acc + Number(c.monto);
     return acc;
   }, 0);
 
   const marcarPagado = async (contrato) => {
-    const p = pagos.find(x => x.contrato_id === contrato.id && x.mes === mes && x.anio === anio && x.tipo === "alquiler");
+    const p = pagos.find(x => x.contrato_id === contrato.id && Number(x.mes) === mes && Number(x.anio) === anio && x.tipo === "alquiler");
     if (p) {
       await supabase.from("pagos").update({ estado: "pagado", fecha: hoy() }).eq("id", p.id);
     } else {
@@ -603,8 +603,8 @@ function Finanzas({ pagos, contratos, inquilinos, expensas, reload, showToast })
   const [fp, setFp] = useState({ contrato_id: "", tipo: "alquiler", mes: now.getMonth() + 1, anio: now.getFullYear(), monto: "", fecha: "", estado: "pendiente" });
   const [fg, setFg] = useState({ concepto: "", monto: "", mes: now.getMonth() + 1, anio: now.getFullYear(), descripcion: "" });
 
-  const pagosFiltrados = pagos.filter(p => p.mes === mes && p.anio === anio && (est === "todos" || p.estado === est));
-  const gastosFiltrados = expensas.filter(e => e.mes === mes && e.anio === anio);
+  const pagosFiltrados = pagos.filter(p => Number(p.mes) === mes && Number(p.anio) === anio && (est === "todos" || p.estado === est));
+  const gastosFiltrados = expensas.filter(e => Number(e.mes) === mes && Number(e.anio) === anio);
 
   const savePago = async () => {
     if (!fp.contrato_id || !fp.monto) return showToast("Completá los campos requeridos", "error");
