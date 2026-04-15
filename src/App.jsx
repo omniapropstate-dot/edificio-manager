@@ -344,15 +344,15 @@ function Dashboard({ inquilinos, contratos, pagos, expensas, mantenimiento }) {
 
   const pMes = pagos.filter(p => Number(p.mes) === mes && Number(p.anio) === anio);
   const eMes = expensas.filter(e => Number(e.mes) === mes && Number(e.anio) === anio);
+  const activos = contratos.filter(c => c.estado === "activo");
   const cobrado = pMes.filter(p => p.estado === "pagado").reduce((a, b) => a + Number(b.monto), 0);
   const pendiente = activos.reduce((acc, c) => {
-  const p = pMes.find(x => x.contrato_id === c.id && x.tipo === "alquiler");
-  if (!p || p.estado !== "pagado") return acc + Number(c.monto);
-  return acc;
-}, 0);
+    const p = pMes.find(x => x.contrato_id === c.id && x.tipo === "alquiler");
+    if (!p || p.estado !== "pagado") return acc + Number(c.monto);
+    return acc;
+  }, 0);
   const gastos = eMes.reduce((a, b) => a + Number(b.monto), 0);
   const neto = cobrado - gastos;
-  const activos = contratos.filter(c => c.estado === "activo");
   const ocupacion = contratos.length > 0 ? Math.round((activos.length / contratos.length) * 100) : 0;
   const vencen = contratos.filter(c => { const d = (new Date(c.vencimiento) - now) / 86400000; return d > 0 && d < 90; });
   const mantPend = mantenimiento.filter(m => m.estado === "pendiente").length;
