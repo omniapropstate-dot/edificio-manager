@@ -66,8 +66,11 @@ function exportCSV(data, mes, anio) {
   const a = document.createElement("a");
   a.href = url;
   a.download = `LIMAX_${mesNombre}_${anio}.csv`;
+  a.style.display = "none";
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // ─── Token validation ────────────────────────────────────────────────────────
