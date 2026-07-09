@@ -135,9 +135,19 @@ async function fetchDashboardData(edificioId, mes, anio) {
   const cobrados = pagosFiltrados.filter((p) => p.estado === "pagado");
   const totalCobrado = cobrados.reduce((s, p) => s + (p.monto || 0), 0);
 
-  // Pendiente real = lo que se espera cobrar (contratos activos) menos lo cobrado
-  const totalEsperado = contratos.reduce((s, c) => s + (c.monto_alquiler || 0) + (c.monto_expensa || 0), 0);
-  const totalPendiente = Math.max(0, totalEsperado - totalCobrado);
+  // Si el mes ya tiene pagos registrados, usar esos como fuente de verdad.
+  // Si no hay ningún registro (mes sin datos aún), usar contratos activos como baseline.
+  const mesConRegistros = pagos.length > 0;
+  let totalPendiente;
+  if (mesConRegistros) {
+    // Mes histórico: pendiente = suma de pagos en estado pendiente/parcial
+    const pendientesRegs = pagosFiltrados.filter((p) => p.estado === "pendiente" || p.estado === "parcial");
+    totalPendiente = pendientesRegs.reduce((s, p) => s + (p.monto || 0), 0);
+  } else {
+    // Mes sin registros: pendiente = todo lo esperado según contratos
+    const totalEsperado = contratos.reduce((s, c) => s + (c.monto_alquiler || 0) + (c.monto_expensa || 0), 0);
+    totalPendiente = Math.max(0, totalEsperado - totalCobrado);
+  }
 
   const totalGastos = gastos.reduce((s, g) => s + (g.monto || 0), 0);
   const neto = totalCobrado - totalGastos;
@@ -152,25 +162,32 @@ async function fetchDashboardData(edificioId, mes, anio) {
     else if (!unitStatus[cod]) unitStatus[cod] = "moroso";
   });
 
-  // Contratos activos sin ningún pago registrado este mes → morosos no registrados
+  // Contratos sin ningún pago registrado este mes
   const contratosConPago = new Set(pagosFiltrados.map((p) => p.contrato_id));
   const sinPago = contratos.filter((c) => !contratosConPago.has(c.id));
-  sinPago.forEach((c) => {
-    const cod = c.unidades?.codigo;
-    if (cod && !unitStatus[cod]) unitStatus[cod] = "moroso";
-  });
 
-  // Lista de pendientes: registros reales + virtuales (sin pago registrado)
+  // Lista de pendientes y morosos en el grid
   const pendientesReales = pagosFiltrados.filter((p) => p.estado === "pendiente" || p.estado === "parcial");
-  const pendientesVirtuales = sinPago.map((c) => ({
-    id: `virt-${c.id}`,
-    contrato_id: c.id,
-    tipo: "alquiler+expensa",
-    monto: (c.monto_alquiler || 0) + (c.monto_expensa || 0),
-    estado: "pendiente",
-    contratos: { unidades: c.unidades, inquilinos: c.inquilinos, monto_alquiler: c.monto_alquiler, monto_expensa: c.monto_expensa },
-  }));
-  const pendientes = [...pendientesReales, ...pendientesVirtuales];
+  let pendientes;
+  if (mesConRegistros) {
+    // Mes con registros: solo los que tienen estado pendiente/parcial en DB
+    pendientes = pendientesReales;
+  } else {
+    // Mes sin registros: todos los contratos activos son potencialmente morosos
+    sinPago.forEach((c) => {
+      const cod = c.unidades?.codigo;
+      if (cod && !unitStatus[cod]) unitStatus[cod] = "moroso";
+    });
+    const pendientesVirtuales = sinPago.map((c) => ({
+      id: `virt-${c.id}`,
+      contrato_id: c.id,
+      tipo: "alquiler+expensa",
+      monto: (c.monto_alquiler || 0) + (c.monto_expensa || 0),
+      estado: "pendiente",
+      contratos: { unidades: c.unidades, inquilinos: c.inquilinos, monto_alquiler: c.monto_alquiler, monto_expensa: c.monto_expensa },
+    }));
+    pendientes = [...pendientesReales, ...pendientesVirtuales];
+  }
 
   const gastosCat = {};
   gastos.forEach((g) => {
