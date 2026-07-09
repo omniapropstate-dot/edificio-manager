@@ -25,6 +25,51 @@ function useCounter(target, duration = 900) {
   return value;
 }
 
+// ─── CSV Export ──────────────────────────────────────────────────────────────
+function exportCSV(data, mes, anio) {
+  const mesNombre = MONTHS[mes - 1];
+  const rows = [];
+
+  rows.push(["PAGOS"]);
+  rows.push(["Inquilino", "Local", "Tipo", "Monto (Bs.)", "Estado", "Fecha"]);
+  data.pagosFiltrados.forEach((p) => {
+    rows.push([
+      p.contratos?.inquilinos?.nombre ?? "",
+      p.contratos?.unidades?.codigo ?? "",
+      p.tipo ?? "",
+      p.monto ?? 0,
+      p.estado ?? "",
+      p.fecha_pago ?? "",
+    ]);
+  });
+  rows.push([]);
+  rows.push(["Total cobrado", "", "", data.totalCobrado, "", ""]);
+  rows.push(["Total pendiente", "", "", data.totalPendiente, "", ""]);
+  rows.push([]);
+
+  rows.push(["GASTOS"]);
+  rows.push(["Concepto", "Categoria", "Monto (Bs.)"]);
+  data.gastos.forEach((g) => {
+    rows.push([g.concepto ?? "", g.categoria ?? "", g.monto ?? 0]);
+  });
+  rows.push([]);
+  rows.push(["Total gastos", "", data.totalGastos]);
+  rows.push([]);
+  rows.push(["NETO", "", data.neto]);
+
+  const csv = rows
+    .map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `LIMAX_${mesNombre}_${anio}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ─── Token validation ────────────────────────────────────────────────────────
 async function validateToken(token) {
   const { data, error } = await supabase
@@ -34,6 +79,20 @@ async function validateToken(token) {
     .single();
   if (error || !data) return null;
   return data;
+}
+
+// ─── Find last month with data ───────────────────────────────────────────────
+async function getLatestDataMonth() {
+  const { data } = await supabase
+    .from("pagos")
+    .select("mes, anio")
+    .order("anio", { ascending: false })
+    .order("mes", { ascending: false })
+    .limit(1)
+    .single();
+  if (data) return { mes: data.mes, anio: data.anio };
+  const now = new Date();
+  return { mes: now.getMonth() + 1, anio: now.getFullYear() };
 }
 
 // ─── Data fetcher ────────────────────────────────────────────────────────────
@@ -66,25 +125,17 @@ async function fetchDashboardData(edificioId, mes, anio) {
   const unidades = unidadesRes.data ?? [];
   const contratos = contratosRes.data ?? [];
 
-  // filter pagos to this edificio
-  const pagosFiltrados = pagos.filter((p) => {
-    const u = p.contratos?.unidades;
-    return u !== undefined;
-  });
-
+  const pagosFiltrados = pagos.filter((p) => p.contratos?.unidades !== undefined);
   const cobrados = pagosFiltrados.filter((p) => p.estado === "pagado");
   const totalCobrado = cobrados.reduce((s, p) => s + (p.monto || 0), 0);
-
   const pendientes = pagosFiltrados.filter((p) => p.estado === "pendiente" || p.estado === "parcial");
   const totalPendiente = pendientes.reduce((s, p) => {
     const m = p.monto > 0 ? p.monto : (p.contratos?.monto_alquiler || 0) + (p.contratos?.monto_expensa || 0);
     return s + m;
   }, 0);
-
   const totalGastos = gastos.reduce((s, g) => s + (g.monto || 0), 0);
   const neto = totalCobrado - totalGastos;
 
-  // per unit status
   const unitStatus = {};
   pagosFiltrados.forEach((p) => {
     const cod = p.contratos?.unidades?.codigo;
@@ -94,41 +145,21 @@ async function fetchDashboardData(edificioId, mes, anio) {
     else if (!unitStatus[cod]) unitStatus[cod] = "moroso";
   });
 
-  // gastos by category
   const gastosCat = {};
   gastos.forEach((g) => {
     gastosCat[g.categoria] = (gastosCat[g.categoria] || 0) + g.monto;
   });
 
-  return {
-    totalCobrado,
-    totalPendiente,
-    totalGastos,
-    neto,
-    cobrados,
-    pendientes,
-    gastos,
-    gastosCat,
-    unidades,
-    unitStatus,
-    contratos,
-    pagosFiltrados,
-  };
+  return { totalCobrado, totalPendiente, totalGastos, neto, cobrados, pendientes, gastos, gastosCat, unidades, unitStatus, contratos, pagosFiltrados };
 }
 
 // ─── KPI Card ────────────────────────────────────────────────────────────────
 function KPICard({ label, value, accent, index, onClick, sub }) {
   const animated = useCounter(value);
   return (
-    <button
-      className="kpi-card"
-      style={{ "--accent": accent, "--i": index }}
-      onClick={onClick}
-    >
+    <button className="kpi-card" style={{ "--accent": accent, "--i": index }} onClick={onClick}>
       <span className="kpi-label">{label}</span>
-      <span className="kpi-value" style={{ color: accent }}>
-        Bs. {fmt(animated)}
-      </span>
+      <span className="kpi-value" style={{ color: accent }}>Bs. {fmt(animated)}</span>
       {sub && <span className="kpi-sub">{sub}</span>}
     </button>
   );
@@ -165,12 +196,7 @@ function OcupacionGrid({ unidades, unitStatus, onUnitClick }) {
         {unidades.map((u) => {
           const st = u.estado === "libre" ? "libre" : (unitStatus[u.codigo] || (u.estado === "ocupado" ? "moroso" : "libre"));
           return (
-            <button
-              key={u.id}
-              className={`unit-cell unit-${st}`}
-              onClick={() => onUnitClick(u)}
-              title={u.codigo}
-            >
+            <button key={u.id} className={`unit-cell unit-${st}`} onClick={() => onUnitClick(u)} title={u.codigo}>
               {u.codigo}
             </button>
           );
@@ -225,7 +251,7 @@ function MorososList({ pendientes, onOpen }) {
 }
 
 // ─── Gastos Section ──────────────────────────────────────────────────────────
-function GastosSection({ gastos, gastosCat }) {
+function GastosSection({ gastos, gastosCat, onOpen }) {
   const [view, setView] = useState("chart");
   const maxCat = Math.max(...Object.values(gastosCat), 1);
   return (
@@ -269,7 +295,7 @@ function GastosSection({ gastos, gastosCat }) {
 }
 
 // ─── Drawer ──────────────────────────────────────────────────────────────────
-function Drawer({ open, onClose, type, payload, mes, anio }) {
+function Drawer({ open, onClose, type, payload }) {
   useEffect(() => {
     if (open) document.body.style.overflow = "hidden";
     else document.body.style.overflow = "";
@@ -330,6 +356,22 @@ function Drawer({ open, onClose, type, payload, mes, anio }) {
         </div>
       );
     }
+  } else if (type === "gastos" && payload) {
+    title = "Gastos del mes";
+    content = (
+      <ul className="drawer-list">
+        {payload.map((g) => (
+          <li key={g.id} className="drawer-item">
+            <div>
+              <span className="di-nombre">{g.concepto}</span>
+              <span className="di-sub">{g.categoria}</span>
+            </div>
+            <span className="di-monto" style={{ color: "var(--amber)" }}>Bs. {fmt(g.monto)}</span>
+          </li>
+        ))}
+        {payload.length === 0 && <p className="empty-msg">Sin gastos este mes</p>}
+      </ul>
+    );
   } else if (type === "unit" && payload) {
     const u = payload;
     const contrato = u.contratos?.find((c) => c.estado === "activo");
@@ -397,28 +439,31 @@ function MonthNav({ mes, anio, onChange }) {
 // ─── App ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [edificio, setEdificio] = useState(null);
-  const [authState, setAuthState] = useState("loading"); // loading | ok | denied
-  const now = new Date();
-  const [mes, setMes] = useState(now.getMonth() + 1);
-  const [anio, setAnio] = useState(now.getFullYear());
+  const [authState, setAuthState] = useState("loading");
+  const [mes, setMes] = useState(null);
+  const [anio, setAnio] = useState(null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [drawer, setDrawer] = useState({ open: false, type: null, payload: null });
 
-  // Token auth
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("t");
     if (!token) { setAuthState("denied"); return; }
-    validateToken(token).then((ed) => {
-      if (ed) { setEdificio(ed); setAuthState("ok"); }
-      else setAuthState("denied");
+    Promise.all([validateToken(token), getLatestDataMonth()]).then(([ed, latest]) => {
+      if (ed) {
+        setEdificio(ed);
+        setMes(latest.mes);
+        setAnio(latest.anio);
+        setAuthState("ok");
+      } else {
+        setAuthState("denied");
+      }
     });
   }, []);
 
-  // Load data
   useEffect(() => {
-    if (authState !== "ok" || !edificio) return;
+    if (authState !== "ok" || !edificio || !mes || !anio) return;
     setLoading(true);
     fetchDashboardData(edificio.id, mes, anio).then((d) => {
       setData(d);
@@ -426,37 +471,30 @@ export default function App() {
     });
   }, [authState, edificio, mes, anio]);
 
-  const openDrawer = useCallback((type, payload) => {
-    setDrawer({ open: true, type, payload });
-  }, []);
+  const openDrawer = useCallback((type, payload) => setDrawer({ open: true, type, payload }), []);
   const closeDrawer = useCallback(() => setDrawer({ open: false, type: null, payload: null }), []);
 
-  // ── Render states ──
-  if (authState === "loading") {
-    return (
-      <div className="splash">
-        <div className="spinner" />
-      </div>
-    );
-  }
-  if (authState === "denied") {
-    return (
-      <div className="splash">
-        <p className="denied-msg">Acceso no autorizado</p>
-      </div>
-    );
-  }
+  if (authState === "loading") return <div className="splash"><div className="spinner" /></div>;
+  if (authState === "denied") return <div className="splash"><p className="denied-msg">Acceso no autorizado</p></div>;
 
   return (
     <div className="app">
-      {/* Header */}
       <header className="app-header">
         <div className="header-top">
           <div>
             <p className="header-eyebrow">Panel BI</p>
             <h1 className="header-title">{edificio.nombre}</h1>
           </div>
-          <MonthNav mes={mes} anio={anio} onChange={(m, a) => { setMes(m); setAnio(a); }} />
+          <div className="header-right">
+            <MonthNav mes={mes} anio={anio} onChange={(m, a) => { setMes(m); setAnio(a); }} />
+            <button
+              className="export-btn"
+              onClick={() => data && exportCSV(data, mes, anio)}
+              disabled={!data}
+            >
+              ↓ CSV
+            </button>
+          </div>
         </div>
       </header>
 
@@ -465,66 +503,27 @@ export default function App() {
       <main className="app-main">
         {data && (
           <>
-            {/* KPIs */}
             <div className="kpi-grid">
-              <KPICard
-                label="Cobrado"
-                value={data.totalCobrado}
-                accent="var(--green)"
-                index={0}
-                onClick={() => openDrawer("cobrado", data.cobrados)}
-                sub={`${data.cobrados.length} pagos`}
-              />
-              <KPICard
-                label="Pendiente"
-                value={data.totalPendiente}
-                accent="var(--red)"
-                index={1}
-                onClick={() => openDrawer("pendiente", data.pendientes)}
-                sub={`${data.pendientes.length} deudores`}
-              />
-              <KPICard
-                label="Gastos"
-                value={data.totalGastos}
-                accent="var(--amber)"
-                index={2}
-                onClick={() => openDrawer("gastos", data.gastos)}
-                sub={`${data.gastos.length} registros`}
-              />
-              <KPICard
-                label="Neto"
-                value={data.neto}
-                accent={data.neto >= 0 ? "var(--green)" : "var(--red)"}
-                index={3}
-                onClick={() => openDrawer("neto", { cobrado: data.totalCobrado, gastos: data.totalGastos, neto: data.neto })}
-              />
+              <KPICard label="Cobrado" value={data.totalCobrado} accent="var(--green)" index={0} onClick={() => openDrawer("cobrado", data.cobrados)} sub={`${data.cobrados.length} pagos`} />
+              <KPICard label="Pendiente" value={data.totalPendiente} accent="var(--red)" index={1} onClick={() => openDrawer("pendiente", data.pendientes)} sub={`${data.pendientes.length} deudores`} />
+              <KPICard label="Gastos" value={data.totalGastos} accent="var(--amber)" index={2} onClick={() => openDrawer("gastos", data.gastos)} sub={`${data.gastos.length} registros`} />
+              <KPICard label="Neto" value={data.neto} accent={data.neto >= 0 ? "var(--green)" : "var(--red)"} index={3} onClick={() => openDrawer("neto", { cobrado: data.totalCobrado, gastos: data.totalGastos, neto: data.neto })} />
             </div>
 
             <CompBar cobrado={data.totalCobrado} pendiente={data.totalPendiente} />
 
-            <OcupacionGrid
-              unidades={data.unidades}
-              unitStatus={data.unitStatus}
-              onUnitClick={(u) => openDrawer("unit", u)}
-            />
+            <OcupacionGrid unidades={data.unidades} unitStatus={data.unitStatus} onUnitClick={(u) => openDrawer("unit", u)} />
 
             {data.pendientes.length > 0 && (
               <MorososList pendientes={data.pendientes} onOpen={openDrawer} />
             )}
 
-            <GastosSection gastos={data.gastos} gastosCat={data.gastosCat} />
+            <GastosSection gastos={data.gastos} gastosCat={data.gastosCat} onOpen={openDrawer} />
           </>
         )}
       </main>
 
-      <Drawer
-        open={drawer.open}
-        onClose={closeDrawer}
-        type={drawer.type}
-        payload={drawer.payload}
-        mes={mes}
-        anio={anio}
-      />
+      <Drawer open={drawer.open} onClose={closeDrawer} type={drawer.type} payload={drawer.payload} />
     </div>
   );
 }

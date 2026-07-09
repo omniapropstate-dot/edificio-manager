@@ -85,6 +85,28 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
   color: var(--text);
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ── Export button ─────────────────────────────────────────────────────── */
+.export-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 6px 14px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--gold);
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.export-btn:hover { background: rgba(212,168,75,0.1); border-color: var(--gold); }
+.export-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
 /* ── Month nav ─────────────────────────────────────────────────────────── */
 .month-nav {
   display: flex;
