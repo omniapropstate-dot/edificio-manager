@@ -31,7 +31,7 @@ function exportCSV(data, mes, anio) {
   const rows = [];
 
   rows.push(["PAGOS"]);
-  rows.push(["Inquilino", "Local", "Tipo", "Monto (Bs.)", "Estado", "Fecha"]);
+  rows.push(["Inquilino", "Local", "Tipo", "Monto (Bs.)", "Estado", "Fecha", "Documento", "N° Documento"]);
   data.pagosFiltrados.forEach((p) => {
     rows.push([
       p.contratos?.inquilinos?.nombre ?? "",
@@ -40,11 +40,13 @@ function exportCSV(data, mes, anio) {
       p.monto ?? 0,
       p.estado ?? "",
       p.fecha_pago ?? "",
+      p.tipo_documento ?? "",
+      p.numero_documento ?? "",
     ]);
   });
   rows.push([]);
-  rows.push(["Total cobrado", "", "", data.totalCobrado, "", ""]);
-  rows.push(["Total pendiente", "", "", data.totalPendiente, "", ""]);
+  rows.push(["Total cobrado", "", "", data.totalCobrado, "", "", "", ""]);
+  rows.push(["Total pendiente", "", "", data.totalPendiente, "", "", "", ""]);
   rows.push([]);
 
   rows.push(["GASTOS"]);
@@ -103,7 +105,7 @@ async function fetchDashboardData(edificioId, mes, anio) {
   const [pagosRes, gastosRes, unidadesRes, contratosRes] = await Promise.all([
     supabase
       .from("pagos")
-      .select("id, tipo, monto, estado, fecha_pago, metodo_pago, contrato_id, contratos(monto_alquiler, monto_expensa, estado, unidades(codigo), inquilinos(nombre))")
+      .select("id, tipo, monto, estado, fecha_pago, metodo_pago, numero_documento, tipo_documento, contrato_id, contratos(monto_alquiler, monto_expensa, estado, unidades(codigo), inquilinos(nombre))")
       .eq("mes", mes)
       .eq("anio", anio),
     supabase
