@@ -50,20 +50,29 @@ function exportCSV(data, mes, anio) {
   rows.push([]);
 
   rows.push(["GASTOS"]);
-  rows.push(["Concepto", "Categoria", "Monto (Bs.)"]);
+  rows.push(["Concepto", "Categoria", "Subcategoria", "Proveedor", "Monto (Bs.)", "Fecha", "N° Factura", "Notas"]);
   data.gastos.forEach((g) => {
-    rows.push([g.concepto ?? "", g.categoria ?? "", g.monto ?? 0]);
+    rows.push([
+      g.concepto ?? "",
+      g.categoria ?? "",
+      g.subcategoria ?? "",
+      g.proveedor ?? "",
+      g.monto ?? 0,
+      g.fecha ?? "",
+      g.numero_factura ?? "",
+      g.notas ?? "",
+    ]);
   });
   rows.push([]);
-  rows.push(["Total gastos", "", data.totalGastos]);
+  rows.push(["Total gastos", "", "", "", data.totalGastos, "", "", ""]);
   rows.push([]);
-  rows.push(["NETO", "", data.neto]);
+  rows.push(["NETO", "", "", "", data.neto, "", "", ""]);
 
   const csv = rows
     .map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
     .join("\n");
 
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -110,7 +119,7 @@ async function fetchDashboardData(edificioId, mes, anio) {
       .eq("anio", anio),
     supabase
       .from("gastos")
-      .select("id, concepto, categoria, monto, mes, anio")
+      .select("id, concepto, categoria, subcategoria, monto, mes, anio, fecha, proveedor, numero_factura, notas")
       .eq("edificio_id", edificioId)
       .eq("mes", mes)
       .eq("anio", anio),
