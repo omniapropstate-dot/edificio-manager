@@ -66,6 +66,24 @@ function exportCSV(data, mes, anio) {
   rows.push([]);
   rows.push(["Total gastos", "", "", "", data.totalGastos, "", "", ""]);
   rows.push([]);
+
+  rows.push(["MULTAS"]);
+  rows.push(["Fecha", "Monto (Bs.)", "Motivo", "Inquilino / Local", "Estado"]);
+  data.multas.forEach((m) => {
+    const inquilino = m.contratos?.inquilinos?.nombre ?? "";
+    const local = m.contratos?.unidades?.codigo ?? "";
+    rows.push([
+      m.fecha ?? "",
+      m.monto ?? 0,
+      m.motivo ?? "",
+      [inquilino, local].filter(Boolean).join(" / "),
+      m.estado ?? "",
+    ]);
+  });
+  rows.push([]);
+  rows.push(["Total multas pendientes", "", "", "", data.totalMultasPendientes]);
+  rows.push([]);
+
   rows.push(["NETO", "", "", "", data.neto, "", "", ""]);
 
   const csv = rows
@@ -111,7 +129,13 @@ async function getLatestDataMonth() {
 
 // ─── Data fetcher ────────────────────────────────────────────────────────────
 async function fetchDashboardData(edificioId, mes, anio) {
-  const [pagosRes, gastosRes, unidadesRes, contratosRes] = await Promise.all([
+  const mesStr = String(mes).padStart(2, "0");
+  const desdeFecha = `${anio}-${mesStr}-01`;
+  const anioSig = mes === 12 ? anio + 1 : anio;
+  const mesSig = mes === 12 ? 1 : mes + 1;
+  const hastaFecha = `${anioSig}-${String(mesSig).padStart(2, "0")}-01`;
+
+  const [pagosRes, gastosRes, unidadesRes, contratosRes, multasRes] = await Promise.all([
     supabase
       .from("pagos")
       .select("id, tipo, monto, estado, fecha_pago, metodo_pago, numero_documento, tipo_documento, contrato_id, contratos(monto_alquiler, monto_expensa, estado, unidades(codigo), inquilinos(nombre))")
@@ -133,16 +157,27 @@ async function fetchDashboardData(edificioId, mes, anio) {
       .select("id, estado, monto_alquiler, monto_expensa, unidades(codigo), inquilinos(nombre)")
       .eq("edificio_id", edificioId)
       .eq("estado", "activo"),
+    supabase
+      .from("multas")
+      .select("id, fecha, monto, motivo, estado, contrato_id, contratos(unidades(codigo), inquilinos(nombre))")
+      .eq("edificio_id", edificioId)
+      .gte("fecha", desdeFecha)
+      .lt("fecha", hastaFecha),
   ]);
 
   const pagos = pagosRes.data ?? [];
   const gastos = gastosRes.data ?? [];
   const unidades = unidadesRes.data ?? [];
   const contratos = contratosRes.data ?? [];
+  const multas = multasRes.data ?? [];
 
   const pagosFiltrados = pagos.filter((p) => p.contratos?.unidades !== undefined);
   const cobrados = pagosFiltrados.filter((p) => p.estado === "pagado");
   const totalCobrado = cobrados.reduce((s, p) => s + (p.monto || 0), 0);
+
+  // Nota: las multas son otro tipo de ingreso, no recurrente como alquiler/expensa.
+  // Se muestran aparte y NUNCA se suman a totalCobrado/totalPendiente/neto ni a la barra de cobro.
+  const totalMultasPendientes = multas.filter((m) => m.estado === "pendiente").reduce((s, m) => s + (m.monto || 0), 0);
 
   // Si el mes ya tiene pagos registrados, usar esos como fuente de verdad.
   // Si no hay ningún registro (mes sin datos aún), usar contratos activos como baseline.
@@ -203,7 +238,7 @@ async function fetchDashboardData(edificioId, mes, anio) {
     gastosCat[g.categoria] = (gastosCat[g.categoria] || 0) + g.monto;
   });
 
-  return { totalCobrado, totalPendiente, totalGastos, neto, cobrados, pendientes, gastos, gastosCat, unidades, unitStatus, contratos, pagosFiltrados };
+  return { totalCobrado, totalPendiente, totalGastos, neto, cobrados, pendientes, gastos, gastosCat, unidades, unitStatus, contratos, pagosFiltrados, multas, totalMultasPendientes };
 }
 
 // ─── KPI Card ────────────────────────────────────────────────────────────────
@@ -299,6 +334,44 @@ function MorososList({ pendientes, onOpen }) {
           {expanded ? "Ver menos" : `Ver ${pendientes.length - 4} más`}
         </button>
       )}
+    </section>
+  );
+}
+
+// ─── Multas Section ──────────────────────────────────────────────────────────
+function MultasSection({ multas, onOpen }) {
+  const [expanded, setExpanded] = useState(false);
+  const items = expanded ? multas : multas.slice(0, 4);
+  return (
+    <section className="section">
+      <div className="section-header">
+        <h2 className="section-title">Multas</h2>
+        <span className="section-badge">{multas.length}</span>
+      </div>
+      <ul className="moroso-list">
+        {items.map((m) => {
+          const nombre = m.contratos?.inquilinos?.nombre ?? "—";
+          const codigo = m.contratos?.unidades?.codigo ?? "—";
+          return (
+            <li key={m.id} className="moroso-item" onClick={() => onOpen("multa", m)}>
+              <div className="moroso-info">
+                <span className="moroso-nombre">{nombre}</span>
+                <span className="moroso-codigo">{codigo} · {m.motivo}</span>
+              </div>
+              <div className="moroso-right">
+                <span className="moroso-monto">Bs. {fmt(m.monto)}</span>
+                <span className={`moroso-estado estado-${m.estado}`}>{m.estado}</span>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      {multas.length > 4 && (
+        <button className="ver-mas" onClick={() => setExpanded(!expanded)}>
+          {expanded ? "Ver menos" : `Ver ${multas.length - 4} más`}
+        </button>
+      )}
+      {multas.length === 0 && <p className="empty-msg">Sin multas este mes</p>}
     </section>
   );
 }
@@ -425,6 +498,18 @@ function Drawer({ open, onClose, type, payload }) {
         {payload.length === 0 && <p className="empty-msg">Sin gastos este mes</p>}
       </ul>
     );
+  } else if (type === "multa" && payload) {
+    const m = payload;
+    title = m.contratos?.inquilinos?.nombre ?? "Multa";
+    content = (
+      <div className="drawer-detail">
+        <div className="detail-row"><span>Local</span><span>{m.contratos?.unidades?.codigo}</span></div>
+        <div className="detail-row"><span>Motivo</span><span>{m.motivo}</span></div>
+        <div className="detail-row"><span>Fecha</span><span>{m.fecha}</span></div>
+        <div className="detail-row"><span>Estado</span><span className={`estado-${m.estado}`}>{m.estado}</span></div>
+        <div className="detail-row"><span>Monto</span><span className="red">Bs. {fmt(m.monto)}</span></div>
+      </div>
+    );
   } else if (type === "unit" && payload) {
     const u = payload;
     const contrato = u.contratos?.find((c) => c.estado === "activo");
@@ -475,8 +560,6 @@ function MonthNav({ mes, anio, onChange }) {
     else onChange(mes - 1, anio);
   };
   const next = () => {
-    const now = new Date();
-    if (anio > now.getFullYear() || (anio === now.getFullYear() && mes >= now.getMonth() + 1)) return;
     if (mes === 12) onChange(1, anio + 1);
     else onChange(mes + 1, anio);
   };
@@ -572,6 +655,8 @@ export default function App() {
             )}
 
             <GastosSection gastos={data.gastos} gastosCat={data.gastosCat} onOpen={openDrawer} />
+
+            <MultasSection multas={data.multas} onOpen={openDrawer} />
           </>
         )}
       </main>
