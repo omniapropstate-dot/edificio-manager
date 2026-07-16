@@ -349,6 +349,7 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
 .estado-pendiente { background: rgba(224,85,85,0.15); color: var(--red); }
 .estado-parcial   { background: rgba(224,144,48,0.15); color: var(--amber); }
 .estado-pagado    { background: rgba(76,184,122,0.15); color: var(--green); }
+.estado-pagada    { background: rgba(76,184,122,0.15); color: var(--green); }
 
 .ver-mas {
   margin-top: 10px;
