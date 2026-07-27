@@ -2,6 +2,9 @@ name = "edificios-comerciales"
 main = "worker.js"
 compatibility_date = "2025-01-01"
 
+[vars]
+SUPABASE_URL = "https://kqvhuzwepewqjlffmqvo.supabase.co"
+
 [assets]
 directory = "./dist"
 binding = "ASSETS"
