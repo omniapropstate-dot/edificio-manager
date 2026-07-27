@@ -83,7 +83,7 @@ export default {
       try {
         return await handleDashboard(request, env);
       } catch (err) {
-        return json({ error: "internal", marker: "MARCA-UNICA-TEST-9981" }, 500);
+        return json({ error: "internal" }, 500);
       }
     }
 
