@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { supabase } from "./supabase.js";
 import "./app.css";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -102,74 +101,23 @@ function exportCSV(data, mes, anio) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// ─── Token validation ────────────────────────────────────────────────────────
-async function validateToken(token) {
-  const { data, error } = await supabase
-    .from("edificios")
-    .select("id, nombre")
-    .eq("dashboard_token", token)
-    .single();
-  if (error || !data) return null;
-  return data;
+// ─── Dashboard data fetcher (via Worker, nunca habla directo con Supabase) ───
+async function fetchLatest(token) {
+  const res = await fetch(`/api/dashboard?t=${encodeURIComponent(token)}&latest=1`);
+  if (!res.ok) return null;
+  return res.json();
 }
 
-// ─── Find last month with data ───────────────────────────────────────────────
-async function getLatestDataMonth() {
-  const { data } = await supabase
-    .from("pagos")
-    .select("mes, anio")
-    .order("anio", { ascending: false })
-    .order("mes", { ascending: false })
-    .limit(1)
-    .single();
-  if (data) return { mes: data.mes, anio: data.anio };
-  const now = new Date();
-  return { mes: now.getMonth() + 1, anio: now.getFullYear() };
-}
+async function fetchDashboardData(token, mes, anio) {
+  const res = await fetch(`/api/dashboard?t=${encodeURIComponent(token)}&mes=${mes}&anio=${anio}`);
+  if (!res.ok) return null;
+  const raw = await res.json();
 
-// ─── Data fetcher ────────────────────────────────────────────────────────────
-async function fetchDashboardData(edificioId, mes, anio) {
-  const mesStr = String(mes).padStart(2, "0");
-  const desdeFecha = `${anio}-${mesStr}-01`;
-  const anioSig = mes === 12 ? anio + 1 : anio;
-  const mesSig = mes === 12 ? 1 : mes + 1;
-  const hastaFecha = `${anioSig}-${String(mesSig).padStart(2, "0")}-01`;
-
-  const [pagosRes, gastosRes, unidadesRes, contratosRes, multasRes] = await Promise.all([
-    supabase
-      .from("pagos")
-      .select("id, tipo, monto, estado, fecha_pago, metodo_pago, numero_documento, tipo_documento, contrato_id, contratos(monto_alquiler, monto_expensa, estado, unidades(codigo), inquilinos(nombre))")
-      .eq("mes", mes)
-      .eq("anio", anio),
-    supabase
-      .from("gastos")
-      .select("id, concepto, categoria, subcategoria, monto, mes, anio, fecha, proveedor, numero_factura, notas")
-      .eq("edificio_id", edificioId)
-      .eq("mes", mes)
-      .eq("anio", anio),
-    supabase
-      .from("unidades")
-      .select("id, codigo, tipo, estado, contratos(id, estado, monto_alquiler, monto_expensa, inquilinos(nombre))")
-      .eq("edificio_id", edificioId)
-      .neq("estado", "inactivo"),
-    supabase
-      .from("contratos")
-      .select("id, estado, monto_alquiler, monto_expensa, unidades(codigo), inquilinos(nombre)")
-      .eq("edificio_id", edificioId)
-      .eq("estado", "activo"),
-    supabase
-      .from("multas")
-      .select("id, fecha, monto, motivo, estado, contrato_id, contratos(unidades(codigo), inquilinos(nombre))")
-      .eq("edificio_id", edificioId)
-      .gte("fecha", desdeFecha)
-      .lt("fecha", hastaFecha),
-  ]);
-
-  const pagos = pagosRes.data ?? [];
-  const gastos = gastosRes.data ?? [];
-  const unidades = unidadesRes.data ?? [];
-  const contratos = contratosRes.data ?? [];
-  const multas = multasRes.data ?? [];
+  const pagos = raw.pagos ?? [];
+  const gastos = raw.gastos ?? [];
+  const unidades = raw.unidades ?? [];
+  const contratos = raw.contratos ?? [];
+  const multas = raw.multas ?? [];
 
   const pagosFiltrados = pagos.filter((p) => p.contratos?.unidades !== undefined);
   const cobrados = pagosFiltrados.filter((p) => p.estado === "pagado");
@@ -575,6 +523,7 @@ function MonthNav({ mes, anio, onChange }) {
 // ─── App ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [edificio, setEdificio] = useState(null);
+  const [token, setToken] = useState(null);
   const [authState, setAuthState] = useState("loading");
   const [mes, setMes] = useState(null);
   const [anio, setAnio] = useState(null);
@@ -584,13 +533,14 @@ export default function App() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get("t");
-    if (!token) { setAuthState("denied"); return; }
-    Promise.all([validateToken(token), getLatestDataMonth()]).then(([ed, latest]) => {
-      if (ed) {
-        setEdificio(ed);
-        setMes(latest.mes);
-        setAnio(latest.anio);
+    const t = params.get("t");
+    if (!t) { setAuthState("denied"); return; }
+    fetchLatest(t).then((result) => {
+      if (result?.edificio) {
+        setToken(t);
+        setEdificio(result.edificio);
+        setMes(result.latest.mes);
+        setAnio(result.latest.anio);
         setAuthState("ok");
       } else {
         setAuthState("denied");
@@ -599,13 +549,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (authState !== "ok" || !edificio || !mes || !anio) return;
+    if (authState !== "ok" || !token || !mes || !anio) return;
     setLoading(true);
-    fetchDashboardData(edificio.id, mes, anio).then((d) => {
+    fetchDashboardData(token, mes, anio).then((d) => {
       setData(d);
       setLoading(false);
     });
-  }, [authState, edificio, mes, anio]);
+  }, [authState, token, mes, anio]);
 
   const openDrawer = useCallback((type, payload) => setDrawer({ open: true, type, payload }), []);
   const closeDrawer = useCallback(() => setDrawer({ open: false, type: null, payload: null }), []);
