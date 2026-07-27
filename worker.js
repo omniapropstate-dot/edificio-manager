@@ -78,7 +78,7 @@ export default {
       try {
         return await handleDashboard(request, env);
       } catch (err) {
-        return json({ error: "internal" }, 500);
+        return json({ error: "internal", detail: String(err && err.message || err) }, 500);
       }
     }
 
