@@ -29,7 +29,12 @@ async function handleDashboard(request, env) {
   const token = url.searchParams.get("t");
   if (!token) return json({ error: "unauthorized" }, 401);
 
-  const edificio = await resolveEdificio(env, token);
+  let edificio;
+  try {
+    edificio = await resolveEdificio(env, token);
+  } catch {
+    return json({ error: "unauthorized" }, 401);
+  }
   if (!edificio) return json({ error: "unauthorized" }, 401);
 
   if (url.searchParams.get("latest") === "1") {
@@ -78,7 +83,7 @@ export default {
       try {
         return await handleDashboard(request, env);
       } catch (err) {
-        return json({ error: "internal", detail: String(err && err.message || err) }, 500);
+        return json({ error: "internal" }, 500);
       }
     }
 
