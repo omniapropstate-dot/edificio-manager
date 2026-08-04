@@ -7,6 +7,16 @@ const fmt = (n) =>
 
 const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
+const ICONOS_EVENTO = { pago: "💰", gasto: "🧾", contrato: "📋", inquilino: "👤", mantenimiento: "🔧" };
+
+function tiempoRelativo(iso) {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60) return "hace un momento";
+  if (diff < 3600) return `hace ${Math.floor(diff / 60)} min`;
+  if (diff < 86400) return `hace ${Math.floor(diff / 3600)} h`;
+  return `hace ${Math.floor(diff / 86400)} d`;
+}
+
 function useCounter(target, duration = 900) {
   const [value, setValue] = useState(0);
   const raf = useRef(null);
@@ -132,11 +142,9 @@ async function fetchDashboardData(token, mes, anio) {
   const mesConRegistros = pagos.length > 0;
   let totalPendiente;
   if (mesConRegistros) {
-    // Mes histórico: pendiente = suma de pagos en estado pendiente/parcial
     const pendientesRegs = pagosFiltrados.filter((p) => p.estado === "pendiente" || p.estado === "parcial");
     totalPendiente = pendientesRegs.reduce((s, p) => s + (p.monto || 0), 0);
   } else {
-    // Mes sin registros: pendiente = todo lo esperado según contratos
     const totalEsperado = contratos.reduce((s, c) => s + (c.monto_alquiler || 0) + (c.monto_expensa || 0), 0);
     totalPendiente = Math.max(0, totalEsperado - totalCobrado);
   }
@@ -144,7 +152,6 @@ async function fetchDashboardData(token, mes, anio) {
   const totalGastos = gastos.reduce((s, g) => s + (g.monto || 0), 0);
   const neto = totalCobrado - totalGastos;
 
-  // unitStatus desde pagos registrados
   const unitStatus = {};
   pagosFiltrados.forEach((p) => {
     const cod = p.contratos?.unidades?.codigo;
@@ -154,18 +161,14 @@ async function fetchDashboardData(token, mes, anio) {
     else if (!unitStatus[cod]) unitStatus[cod] = "moroso";
   });
 
-  // Contratos sin ningún pago registrado este mes
   const contratosConPago = new Set(pagosFiltrados.map((p) => p.contrato_id));
   const sinPago = contratos.filter((c) => !contratosConPago.has(c.id));
 
-  // Lista de pendientes y morosos en el grid
   const pendientesReales = pagosFiltrados.filter((p) => p.estado === "pendiente" || p.estado === "parcial");
   let pendientes;
   if (mesConRegistros) {
-    // Mes con registros: solo los que tienen estado pendiente/parcial en DB
     pendientes = pendientesReales;
   } else {
-    // Mes sin registros: todos los contratos activos son potencialmente morosos
     sinPago.forEach((c) => {
       const cod = c.unidades?.codigo;
       if (cod && !unitStatus[cod]) unitStatus[cod] = "moroso";
@@ -186,14 +189,32 @@ async function fetchDashboardData(token, mes, anio) {
     gastosCat[g.categoria] = (gastosCat[g.categoria] || 0) + g.monto;
   });
 
-  return { totalCobrado, totalPendiente, totalGastos, neto, cobrados, pendientes, gastos, gastosCat, unidades, unitStatus, contratos, pagosFiltrados, multas, totalMultasPendientes };
+  // ── Datos en tiempo real que antes solo llegaban por HTML de Telegram ──
+  const deudaReal = raw.deudaReal ?? [];
+  const totalDeudaReal = deudaReal.reduce((s, r) => s + r.total, 0);
+  const documentos = raw.documentos ?? { vencidos: [], futuros: [] };
+  const resultados = raw.resultados ?? { ingresos: [], totalIngresos: 0, egresosPorCategoria: [], totalEgresos: 0, resultadoNeto: 0, margen: 0 };
+  const actividad = raw.actividad ?? [];
+  const mantenimiento = raw.mantenimiento ?? [];
+  const gastosFijos = raw.gastosFijos ?? [];
+
+  return {
+    totalCobrado, totalPendiente, totalGastos, neto, cobrados, pendientes, gastos, gastosCat,
+    unidades, unitStatus, contratos, pagosFiltrados, multas, totalMultasPendientes,
+    deudaReal, totalDeudaReal, documentos, resultados, actividad, mantenimiento, gastosFijos,
+  };
 }
 
 // ─── KPI Card ────────────────────────────────────────────────────────────────
-function KPICard({ label, value, accent, index, onClick, sub }) {
+function KPICard({ label, value, accent, index, onClick, sub, fullWidth }) {
   const animated = useCounter(value);
   return (
-    <button className="kpi-card" style={{ "--accent": accent, "--i": index }} onClick={onClick}>
+    <button
+      className={`kpi-card${fullWidth ? " kpi-card-wide" : ""}`}
+      style={{ "--accent": accent, "--i": index }}
+      onClick={onClick}
+      disabled={!onClick}
+    >
       <span className="kpi-label">{label}</span>
       <span className="kpi-value" style={{ color: accent }}>Bs. {fmt(animated)}</span>
       {sub && <span className="kpi-sub">{sub}</span>}
@@ -248,14 +269,14 @@ function OcupacionGrid({ unidades, unitStatus, onUnitClick }) {
   );
 }
 
-// ─── Morosos List ────────────────────────────────────────────────────────────
+// ─── Morosos List (mes seleccionado) ─────────────────────────────────────────
 function MorososList({ pendientes, onOpen }) {
   const [expanded, setExpanded] = useState(false);
   const items = expanded ? pendientes : pendientes.slice(0, 4);
   return (
     <section className="section">
       <div className="section-header">
-        <h2 className="section-title">Morosos</h2>
+        <h2 className="section-title">Morosos del mes</h2>
         <span className="section-badge badge-red">{pendientes.length}</span>
       </div>
       <ul className="moroso-list">
@@ -286,6 +307,79 @@ function MorososList({ pendientes, onOpen }) {
   );
 }
 
+// ─── Deuda real con arrastre (siempre al día, no depende del mes elegido) ────
+function DeudaRealSection({ deudaReal, totalDeudaReal, onOpen }) {
+  const [expanded, setExpanded] = useState(false);
+  const items = expanded ? deudaReal : deudaReal.slice(0, 6);
+  return (
+    <section className="section">
+      <div className="section-header">
+        <h2 className="section-title">Deuda real por local</h2>
+        <span className={`section-badge ${deudaReal.length ? "badge-red" : ""}`}>Bs. {fmt(totalDeudaReal)}</span>
+      </div>
+      {deudaReal.length === 0 ? (
+        <p className="empty-msg">Todos los locales están al día. 🎉</p>
+      ) : (
+        <>
+          <ul className="moroso-list">
+            {items.map((r) => {
+              const periodos = r.meses_alquiler.length + r.meses_expensa.length;
+              return (
+                <li key={r.contrato_id} className="moroso-item" onClick={() => onOpen("deuda-local", r)}>
+                  <div className="moroso-info">
+                    <span className="moroso-nombre">{r.local}</span>
+                    <span className="moroso-codigo">{r.inquilino}</span>
+                  </div>
+                  <div className="moroso-right">
+                    <span className="moroso-monto">Bs. {fmt(r.total)}</span>
+                    <span className="moroso-codigo">{periodos} período{periodos !== 1 ? "s" : ""}</span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          {deudaReal.length > 6 && (
+            <button className="ver-mas" onClick={() => setExpanded(!expanded)}>
+              {expanded ? "Ver menos" : `Ver ${deudaReal.length - 6} más`}
+            </button>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+// ─── Documentos pendientes de entregar ───────────────────────────────────────
+function DocumentosSection({ documentos }) {
+  const { vencidos, futuros } = documentos;
+  return (
+    <section className="section">
+      <div className="section-header">
+        <h2 className="section-title">Documentos pendientes</h2>
+        <span className={`section-badge ${vencidos.length ? "badge-red" : ""}`}>{vencidos.length}</span>
+      </div>
+      {vencidos.length === 0 ? (
+        <p className="empty-msg">Sin documentos atrasados.</p>
+      ) : (
+        <ul className="drawer-list">
+          {vencidos.map((p) => (
+            <li key={p.id} className="drawer-item">
+              <div>
+                <span className="di-nombre">{p.contratos?.inquilinos?.nombre ?? "—"}</span>
+                <span className="di-sub">{p.contratos?.unidades?.codigo ?? "—"} · {p.tipo === "alquiler" ? "Factura" : "Recibo"} · {MONTHS[p.mes - 1]} {p.anio}</span>
+              </div>
+              <span className="di-monto amber">Bs. {fmt(p.monto)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {futuros.length > 0 && (
+        <p className="section-note">+ {futuros.length} por dar en su mes (pagos adelantados, todavía no corresponde)</p>
+      )}
+    </section>
+  );
+}
+
 // ─── Multas Section ──────────────────────────────────────────────────────────
 function MultasSection({ multas, onOpen }) {
   const [expanded, setExpanded] = useState(false);
@@ -293,7 +387,7 @@ function MultasSection({ multas, onOpen }) {
   return (
     <section className="section">
       <div className="section-header">
-        <h2 className="section-title">Multas</h2>
+        <h2 className="section-title">Multas del mes</h2>
         <span className="section-badge">{multas.length}</span>
       </div>
       <ul className="moroso-list">
@@ -324,44 +418,159 @@ function MultasSection({ multas, onOpen }) {
   );
 }
 
-// ─── Gastos Section ──────────────────────────────────────────────────────────
-function GastosSection({ gastos, gastosCat, onOpen }) {
-  const [view, setView] = useState("chart");
-  const maxCat = Math.max(...Object.values(gastosCat), 1);
+// ─── Estado de Resultados (mes seleccionado, con % y margen) ────────────────
+function ResultadosSection({ resultados }) {
+  const { ingresos, totalIngresos, egresosPorCategoria, totalEgresos, resultadoNeto, margen } = resultados;
+  const maxIng = Math.max(...ingresos.map((i) => i.monto), 1);
+  const maxEg = Math.max(...egresosPorCategoria.map((e) => e.monto), 1);
+  return (
+    <>
+      <div className="kpi-grid">
+        <KPICard label="Ingresos" value={totalIngresos} accent="var(--green)" index={0} sub={`${ingresos.length} conceptos`} />
+        <KPICard label="Egresos" value={totalEgresos} accent="var(--red)" index={1} sub={`${egresosPorCategoria.length} categorías`} />
+        <KPICard
+          label="Resultado neto"
+          value={resultadoNeto}
+          accent={resultadoNeto >= 0 ? "var(--gold)" : "var(--red)"}
+          index={2}
+          sub={`Margen ${margen}%`}
+          fullWidth
+        />
+      </div>
+
+      <section className="section">
+        <div className="section-header"><h2 className="section-title">Ingresos por concepto</h2></div>
+        <div className="cat-bars">
+          {ingresos.map((i) => (
+            <div key={i.concepto} className="cat-row">
+              <span className="cat-label">{i.concepto}</span>
+              <div className="cat-bar-bg"><div className="cat-bar-fill cat-bar-green" style={{ width: `${(i.monto / maxIng) * 100}%` }} /></div>
+              <span className="cat-amount">Bs. {fmt(i.monto)} <em>{i.pct}%</em></span>
+            </div>
+          ))}
+          {ingresos.length === 0 && <p className="empty-msg">Sin ingresos este mes</p>}
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="section-header"><h2 className="section-title">Egresos por categoría</h2></div>
+        <div className="cat-bars">
+          {egresosPorCategoria.map((e) => (
+            <div key={e.categoria} className="cat-row">
+              <span className="cat-label">{e.categoria}</span>
+              <div className="cat-bar-bg"><div className="cat-bar-fill" style={{ width: `${(e.monto / maxEg) * 100}%` }} /></div>
+              <span className="cat-amount">Bs. {fmt(e.monto)} <em>{e.pct}%</em></span>
+            </div>
+          ))}
+          {egresosPorCategoria.length === 0 && <p className="empty-msg">Sin egresos este mes</p>}
+        </div>
+      </section>
+    </>
+  );
+}
+
+// ─── Detalle itemizado de gastos (complementa las barras de arriba) ─────────
+function GastosDetalleSection({ gastos }) {
   return (
     <section className="section">
       <div className="section-header">
-        <h2 className="section-title">Gastos</h2>
-        <div className="toggle-group">
-          <button className={`toggle-btn ${view === "chart" ? "active" : ""}`} onClick={() => setView("chart")}>Gráfico</button>
-          <button className={`toggle-btn ${view === "list" ? "active" : ""}`} onClick={() => setView("list")}>Lista</button>
-        </div>
+        <h2 className="section-title">Detalle de gastos</h2>
+        <span className="section-badge">{gastos.length}</span>
       </div>
-      {view === "chart" ? (
-        <div className="cat-bars">
-          {Object.entries(gastosCat).map(([cat, val]) => (
-            <div key={cat} className="cat-row">
-              <span className="cat-label">{cat}</span>
-              <div className="cat-bar-bg">
-                <div className="cat-bar-fill" style={{ width: `${(val / maxCat) * 100}%` }} />
-              </div>
-              <span className="cat-amount">Bs. {fmt(val)}</span>
+      <ul className="gasto-list">
+        {gastos.map((g) => (
+          <li key={g.id} className="gasto-item">
+            <div>
+              <span className="gasto-concepto">{g.concepto}</span>
+              <span className="gasto-cat">{g.categoria}</span>
             </div>
-          ))}
-          {Object.keys(gastosCat).length === 0 && <p className="empty-msg">Sin gastos este mes</p>}
-        </div>
+            <span className="gasto-monto">Bs. {fmt(g.monto)}</span>
+          </li>
+        ))}
+        {gastos.length === 0 && <p className="empty-msg">Sin gastos este mes</p>}
+      </ul>
+    </section>
+  );
+}
+
+// ─── Gastos fijos pendientes (recordatorio semanal, siempre período actual) ─
+function GastosFijosSection({ gastosFijos }) {
+  return (
+    <section className="section">
+      <div className="section-header">
+        <h2 className="section-title">Gastos fijos pendientes</h2>
+        <span className={`section-badge ${gastosFijos.length ? "badge-red" : ""}`}>{gastosFijos.length}</span>
+      </div>
+      {gastosFijos.length === 0 ? (
+        <p className="empty-msg">Todos los gastos fijos de este período están registrados. 🎉</p>
       ) : (
-        <ul className="gasto-list">
-          {gastos.map((g) => (
-            <li key={g.id} className="gasto-item">
-              <div>
-                <span className="gasto-concepto">{g.concepto}</span>
-                <span className="gasto-cat">{g.categoria}</span>
-              </div>
-              <span className="gasto-monto">Bs. {fmt(g.monto)}</span>
+        <ul className="pill-list">
+          {gastosFijos.map((g) => (
+            <li key={g.concepto} className="pill-item">
+              {g.concepto}{g.frecuencia === "trimestral" ? " · trimestral" : ""}
             </li>
           ))}
-          {gastos.length === 0 && <p className="empty-msg">Sin gastos este mes</p>}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ─── Mantenimiento pendiente ─────────────────────────────────────────────────
+function MantenimientoSection({ mantenimiento }) {
+  return (
+    <section className="section">
+      <div className="section-header">
+        <h2 className="section-title">Mantenimiento pendiente</h2>
+        <span className="section-badge">{mantenimiento.length}</span>
+      </div>
+      {mantenimiento.length === 0 ? (
+        <p className="empty-msg">Sin pedidos pendientes.</p>
+      ) : (
+        <ul className="drawer-list">
+          {mantenimiento.map((m) => (
+            <li key={m.id} className="drawer-item">
+              <div>
+                <span className="di-nombre">{m.titulo}</span>
+                <span className="di-sub">{m.area || "—"} · {m.estado}</span>
+              </div>
+              <span className={`prioridad-pill prioridad-${m.prioridad}`}>{m.prioridad}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ─── Feed de actividad reciente (últimos 7 días) ─────────────────────────────
+function ActividadFeed({ actividad }) {
+  return (
+    <section className="section">
+      <div className="section-header">
+        <h2 className="section-title">Actividad reciente</h2>
+        <span className="section-badge">{actividad.length}</span>
+      </div>
+      {actividad.length === 0 ? (
+        <p className="empty-msg">Sin movimientos en los últimos 7 días.</p>
+      ) : (
+        <ul className="feed-list">
+          {actividad.map((e, i) => (
+            <li key={i} className="feed-item">
+              <span className="feed-icon">{ICONOS_EVENTO[e.tipo]}</span>
+              <div className="feed-body">
+                <span className="feed-title">
+                  {e.tipo === "pago" && `${e.local ?? "—"} · ${e.inquilino ?? "—"} — ${e.detalle}`}
+                  {e.tipo === "gasto" && e.detalle}
+                  {e.tipo === "contrato" && `Contrato nuevo: ${e.local ?? "—"} · ${e.inquilino ?? "—"}`}
+                  {e.tipo === "inquilino" && `Inquilino nuevo: ${e.inquilino}${e.detalle ? ` (${e.detalle})` : ""}`}
+                  {e.tipo === "mantenimiento" && `Mantenimiento: ${e.detalle}`}
+                </span>
+                <span className="feed-time">{tiempoRelativo(e.created_at)}</span>
+              </div>
+              {e.monto != null && <span className="feed-monto">Bs. {fmt(e.monto)}</span>}
+            </li>
+          ))}
         </ul>
       )}
     </section>
@@ -430,6 +639,20 @@ function Drawer({ open, onClose, type, payload }) {
         </div>
       );
     }
+  } else if (type === "deuda-local" && payload) {
+    const r = payload;
+    title = `${r.local} — ${r.inquilino}`;
+    content = (
+      <div className="drawer-detail">
+        {r.debe_alquiler > 0 && <div className="detail-row"><span>Alquiler</span><span className="red">Bs. {fmt(r.debe_alquiler)}</span></div>}
+        {r.meses_alquiler.length > 0 && <div className="detail-row small"><span>Meses</span><span>{r.meses_alquiler.join(", ")}</span></div>}
+        {r.debe_expensa > 0 && <div className="detail-row"><span>Expensa</span><span className="red">Bs. {fmt(r.debe_expensa)}</span></div>}
+        {r.meses_expensa.length > 0 && <div className="detail-row small"><span>Meses</span><span>{r.meses_expensa.join(", ")}</span></div>}
+        {r.debe_multas > 0 && <div className="detail-row"><span>Multas</span><span className="red">Bs. {fmt(r.debe_multas)}</span></div>}
+        {r.motivos_multa.length > 0 && <div className="detail-row small"><span>Motivos</span><span>{r.motivos_multa.join(", ")}</span></div>}
+        <div className="detail-row big border-top"><span>Total</span><span className="red">Bs. {fmt(r.total)}</span></div>
+      </div>
+    );
   } else if (type === "gastos" && payload) {
     title = "Gastos del mes";
     content = (
@@ -520,6 +743,28 @@ function MonthNav({ mes, anio, onChange }) {
   );
 }
 
+// ─── Tab Bar ─────────────────────────────────────────────────────────────────
+const TABS = [
+  { id: "resumen", label: "Resumen", icon: "◎" },
+  { id: "cobros", label: "Cobros", icon: "◆" },
+  { id: "resultados", label: "Resultados", icon: "▤" },
+  { id: "actividad", label: "Actividad", icon: "◷" },
+];
+
+function TabBar({ active, onChange, badges }) {
+  return (
+    <nav className="tab-bar">
+      {TABS.map((t) => (
+        <button key={t.id} className={`tab-btn ${active === t.id ? "active" : ""}`} onClick={() => onChange(t.id)}>
+          <span className="tab-icon">{t.icon}</span>
+          <span className="tab-label">{t.label}</span>
+          {badges?.[t.id] > 0 && <span className="tab-badge">{badges[t.id]}</span>}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
 // ─── App ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [edificio, setEdificio] = useState(null);
@@ -529,6 +774,7 @@ export default function App() {
   const [anio, setAnio] = useState(null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [tab, setTab] = useState("resumen");
   const [drawer, setDrawer] = useState({ open: false, type: null, payload: null });
 
   useEffect(() => {
@@ -563,6 +809,11 @@ export default function App() {
   if (authState === "loading") return <div className="splash"><div className="spinner" /></div>;
   if (authState === "denied") return <div className="splash"><p className="denied-msg">Acceso no autorizado</p></div>;
 
+  const badges = data ? {
+    cobros: data.deudaReal.length,
+    actividad: data.gastosFijos.length,
+  } : {};
+
   return (
     <div className="app">
       <header className="app-header">
@@ -572,7 +823,9 @@ export default function App() {
             <h1 className="header-title">{edificio.nombre}</h1>
           </div>
           <div className="header-right">
-            <MonthNav mes={mes} anio={anio} onChange={(m, a) => { setMes(m); setAnio(a); }} />
+            {(tab === "resumen" || tab === "resultados") && (
+              <MonthNav mes={mes} anio={anio} onChange={(m, a) => { setMes(m); setAnio(a); }} />
+            )}
             <button
               className="export-btn"
               onClick={() => data && exportCSV(data, mes, anio)}
@@ -582,6 +835,7 @@ export default function App() {
             </button>
           </div>
         </div>
+        <TabBar active={tab} onChange={setTab} badges={badges} />
       </header>
 
       {loading && <div className="loading-bar" />}
@@ -589,24 +843,47 @@ export default function App() {
       <main className="app-main">
         {data && (
           <>
-            <div className="kpi-grid">
-              <KPICard label="Cobrado" value={data.totalCobrado} accent="var(--green)" index={0} onClick={() => openDrawer("cobrado", data.cobrados)} sub={`${data.cobrados.length} pagos`} />
-              <KPICard label="Pendiente" value={data.totalPendiente} accent="var(--red)" index={1} onClick={() => openDrawer("pendiente", data.pendientes)} sub={`${data.pendientes.length} deudores`} />
-              <KPICard label="Gastos" value={data.totalGastos} accent="var(--amber)" index={2} onClick={() => openDrawer("gastos", data.gastos)} sub={`${data.gastos.length} registros`} />
-              <KPICard label="Neto" value={data.neto} accent={data.neto >= 0 ? "var(--green)" : "var(--red)"} index={3} onClick={() => openDrawer("neto", { cobrado: data.totalCobrado, gastos: data.totalGastos, neto: data.neto })} />
-            </div>
+            {tab === "resumen" && (
+              <>
+                <div className="kpi-grid">
+                  <KPICard label="Cobrado" value={data.totalCobrado} accent="var(--green)" index={0} onClick={() => openDrawer("cobrado", data.cobrados)} sub={`${data.cobrados.length} pagos`} />
+                  <KPICard label="Pendiente" value={data.totalPendiente} accent="var(--red)" index={1} onClick={() => openDrawer("pendiente", data.pendientes)} sub={`${data.pendientes.length} deudores`} />
+                  <KPICard label="Gastos" value={data.totalGastos} accent="var(--amber)" index={2} onClick={() => openDrawer("gastos", data.gastos)} sub={`${data.gastos.length} registros`} />
+                  <KPICard label="Neto" value={data.neto} accent={data.neto >= 0 ? "var(--green)" : "var(--red)"} index={3} onClick={() => openDrawer("neto", { cobrado: data.totalCobrado, gastos: data.totalGastos, neto: data.neto })} />
+                </div>
 
-            <CompBar cobrado={data.totalCobrado} pendiente={data.totalPendiente} />
+                <CompBar cobrado={data.totalCobrado} pendiente={data.totalPendiente} />
 
-            <OcupacionGrid unidades={data.unidades} unitStatus={data.unitStatus} onUnitClick={(u) => openDrawer("unit", u)} />
+                <OcupacionGrid unidades={data.unidades} unitStatus={data.unitStatus} onUnitClick={(u) => openDrawer("unit", u)} />
 
-            {data.pendientes.length > 0 && (
-              <MorososList pendientes={data.pendientes} onOpen={openDrawer} />
+                {data.pendientes.length > 0 && (
+                  <MorososList pendientes={data.pendientes} onOpen={openDrawer} />
+                )}
+              </>
             )}
 
-            <GastosSection gastos={data.gastos} gastosCat={data.gastosCat} onOpen={openDrawer} />
+            {tab === "cobros" && (
+              <>
+                <DeudaRealSection deudaReal={data.deudaReal} totalDeudaReal={data.totalDeudaReal} onOpen={openDrawer} />
+                <DocumentosSection documentos={data.documentos} />
+                <MultasSection multas={data.multas} onOpen={openDrawer} />
+              </>
+            )}
 
-            <MultasSection multas={data.multas} onOpen={openDrawer} />
+            {tab === "resultados" && (
+              <>
+                <ResultadosSection resultados={data.resultados} />
+                <GastosDetalleSection gastos={data.gastos} />
+              </>
+            )}
+
+            {tab === "actividad" && (
+              <>
+                <GastosFijosSection gastosFijos={data.gastosFijos} />
+                <MantenimientoSection mantenimiento={data.mantenimiento} />
+                <ActividadFeed actividad={data.actividad} />
+              </>
+            )}
           </>
         )}
       </main>
