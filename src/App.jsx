@@ -1,5 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  PieChart, Pie, Cell, LabelList,
+} from "recharts";
 import "./app.css";
+
+// Reusa los tokens de color que ya tiene la app (no una paleta genérica aparte,
+// para no romper la consistencia visual del resto del dashboard).
+const C = { green: "#4cb87a", red: "#e05555", amber: "#e09030", gold: "#d4a84b", textDim: "#8a8070", surface2: "#221f1b", border: "rgba(255,255,255,0.07)" };
+const CHART_TOOLTIP = {
+  contentStyle: { background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, fontSize: 12, padding: "8px 12px" },
+  labelStyle: { color: "#f0ece6", fontWeight: 600, marginBottom: 4 },
+  itemStyle: { padding: 0 },
+  cursor: { fill: "rgba(255,255,255,0.04)" },
+};
+const fmtCompacto = (n) => (Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 const fmt = (n) =>
@@ -209,11 +224,12 @@ async function fetchDashboardData(token, mes, anio) {
   const actividad = raw.actividad ?? [];
   const mantenimiento = raw.mantenimiento ?? [];
   const gastosFijos = raw.gastosFijos ?? [];
+  const tendencia = raw.tendencia ?? [];
 
   return {
     totalCobrado, totalPendiente, totalGastos, neto, cobrados, pendientes, gastos, gastosCat,
     unidades, unitStatus, contratos, pagosFiltrados, multas, totalMultasPendientes,
-    deudaReal, totalDeudaReal, documentos, resultados, actividad, mantenimiento, gastosFijos,
+    deudaReal, totalDeudaReal, documentos, resultados, actividad, mantenimiento, gastosFijos, tendencia,
   };
 }
 
@@ -320,9 +336,9 @@ function MorososList({ pendientes, onOpen }) {
 }
 
 // ─── Deuda real con arrastre (siempre al día, no depende del mes elegido) ────
+// Tabla con el desglose completo visible (alquiler/expensa/multas/vence/total)
+// sin necesidad de tocar cada fila — igual que las tablas de los HTML viejos.
 function DeudaRealSection({ deudaReal, totalDeudaReal, onOpen }) {
-  const [expanded, setExpanded] = useState(false);
-  const items = expanded ? deudaReal : deudaReal.slice(0, 6);
   return (
     <section className="section">
       <div className="section-header">
@@ -332,62 +348,68 @@ function DeudaRealSection({ deudaReal, totalDeudaReal, onOpen }) {
       {deudaReal.length === 0 ? (
         <p className="empty-msg">Todos los locales están al día. 🎉</p>
       ) : (
-        <>
-          <ul className="moroso-list">
-            {items.map((r) => {
-              const periodos = r.meses_alquiler.length + r.meses_expensa.length;
-              return (
-                <li key={r.contrato_id} className="moroso-item" onClick={() => onOpen("deuda-local", r)}>
-                  <div className="moroso-info">
-                    <span className="moroso-nombre">{r.local}</span>
-                    <span className="moroso-codigo">{r.inquilino}</span>
-                  </div>
-                  <div className="moroso-right">
-                    <span className="moroso-monto">Bs. {fmt(r.total)}</span>
-                    {r.estado_fecha ? (
-                      <span className={`moroso-estado estado-${r.estado_fecha}`}>{ETIQUETA_FECHA[r.estado_fecha](r.fecha_esperada)}</span>
-                    ) : (
-                      <span className="moroso-codigo">{periodos} período{periodos !== 1 ? "s" : ""}</span>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-          {deudaReal.length > 6 && (
-            <button className="ver-mas" onClick={() => setExpanded(!expanded)}>
-              {expanded ? "Ver menos" : `Ver ${deudaReal.length - 6} más`}
-            </button>
-          )}
-        </>
+        <div className="table-scroll">
+          <table className="deuda-table">
+            <thead>
+              <tr>
+                <th>Local</th><th>Inquilino</th><th>Vence</th>
+                <th className="ta-r">Alquiler</th><th className="ta-r">Expensa</th><th className="ta-r">Multas</th><th className="ta-r">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deudaReal.map((r) => (
+                <tr key={r.contrato_id} onClick={() => onOpen("deuda-local", r)}>
+                  <td className="dt-local">{r.local}</td>
+                  <td className="dt-inquilino">{r.inquilino}</td>
+                  <td>
+                    {r.estado_fecha
+                      ? <span className={`moroso-estado estado-${r.estado_fecha}`}>{ETIQUETA_FECHA[r.estado_fecha](r.fecha_esperada)}</span>
+                      : <span className="dt-muted">—</span>}
+                  </td>
+                  <td className="ta-r">{r.debe_alquiler > 0 ? `Bs. ${fmt(r.debe_alquiler)}` : "—"}</td>
+                  <td className="ta-r">{r.debe_expensa > 0 ? `Bs. ${fmt(r.debe_expensa)}` : "—"}</td>
+                  <td className="ta-r">{r.debe_multas > 0 ? `Bs. ${fmt(r.debe_multas)}` : "—"}</td>
+                  <td className="ta-r dt-total red">Bs. {fmt(r.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
 }
 
-// ─── Documentos pendientes de entregar ───────────────────────────────────────
+// ─── Documentos pendientes de entregar (facturas/recibos sin número) ────────
 function DocumentosSection({ documentos }) {
   const { vencidos, futuros } = documentos;
   return (
     <section className="section">
       <div className="section-header">
-        <h2 className="section-title">Documentos pendientes</h2>
+        <h2 className="section-title">Documentos pendientes — facturas y recibos</h2>
         <span className={`section-badge ${vencidos.length ? "badge-red" : ""}`}>{vencidos.length}</span>
       </div>
       {vencidos.length === 0 ? (
         <p className="empty-msg">Sin documentos atrasados.</p>
       ) : (
-        <ul className="drawer-list">
-          {vencidos.map((p) => (
-            <li key={p.id} className="drawer-item">
-              <div>
-                <span className="di-nombre">{p.contratos?.inquilinos?.nombre ?? "—"}</span>
-                <span className="di-sub">{p.contratos?.unidades?.codigo ?? "—"} · {p.tipo === "alquiler" ? "Factura" : "Recibo"} · {MONTHS[p.mes - 1]} {p.anio}</span>
-              </div>
-              <span className="di-monto amber">Bs. {fmt(p.monto)}</span>
-            </li>
-          ))}
-        </ul>
+        <div className="table-scroll">
+          <table className="deuda-table">
+            <thead>
+              <tr><th>Local</th><th>Inquilino</th><th>Doc.</th><th>Período</th><th className="ta-r">Monto</th></tr>
+            </thead>
+            <tbody>
+              {vencidos.map((p) => (
+                <tr key={p.id}>
+                  <td className="dt-local">{p.contratos?.unidades?.codigo ?? "—"}</td>
+                  <td className="dt-inquilino">{p.contratos?.inquilinos?.nombre ?? "—"}</td>
+                  <td>{p.tipo === "alquiler" ? "Factura" : "Recibo"}</td>
+                  <td>{MONTHS[p.mes - 1]} {p.anio}</td>
+                  <td className="ta-r dt-total amber">Bs. {fmt(p.monto)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {futuros.length > 0 && (
         <p className="section-note">+ {futuros.length} por dar en su mes (pagos adelantados, todavía no corresponde)</p>
@@ -593,6 +615,117 @@ function ActividadFeed({ actividad }) {
   );
 }
 
+// ─── BI: Tendencia mensual (últimos 12 meses) — toggle Ingresos/Egresos ↔ Neto ─
+function TendenciaChart({ tendencia }) {
+  const [vista, setVista] = useState("comparar");
+  return (
+    <section className="section">
+      <div className="section-header">
+        <h2 className="section-title">Tendencia · últimos 12 meses</h2>
+        <div className="toggle-group">
+          <button className={`toggle-btn ${vista === "comparar" ? "active" : ""}`} onClick={() => setVista("comparar")}>Ingresos/Egresos</button>
+          <button className={`toggle-btn ${vista === "neto" ? "active" : ""}`} onClick={() => setVista("neto")}>Neto</button>
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={260}>
+        <BarChart data={tendencia} margin={{ top: 8, right: 4, left: -20, bottom: 0 }} barGap={3}>
+          <CartesianGrid stroke={C.border} vertical={false} />
+          <XAxis dataKey="mes_nombre" tick={{ fill: C.textDim, fontSize: 11 }} axisLine={{ stroke: C.border }} tickLine={false} />
+          <YAxis tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={fmtCompacto} width={40} />
+          <Tooltip {...CHART_TOOLTIP} formatter={(v) => `Bs. ${fmt(v)}`} />
+          {vista === "comparar" ? (
+            <>
+              <Legend wrapperStyle={{ fontSize: 11, color: C.textDim }} />
+              <Bar dataKey="ingresos" name="Ingresos" fill={C.green} radius={[3, 3, 0, 0]} />
+              <Bar dataKey="egresos" name="Egresos" fill={C.red} radius={[3, 3, 0, 0]} />
+            </>
+          ) : (
+            <Bar dataKey="neto" name="Neto" radius={[3, 3, 0, 0]}>
+              {tendencia.map((t, i) => <Cell key={i} fill={t.neto >= 0 ? C.green : C.red} />)}
+            </Bar>
+          )}
+        </BarChart>
+      </ResponsiveContainer>
+    </section>
+  );
+}
+
+// ─── BI: Composición de ingresos (donut, 3 categorías fijas) ────────────────
+const COLOR_INGRESO = { Alquiler: C.green, Expensa: C.gold, Multas: C.amber };
+function IngresosDonut({ ingresos }) {
+  return (
+    <section className="section">
+      <div className="section-header"><h2 className="section-title">Composición de ingresos</h2></div>
+      {ingresos.length === 0 ? <p className="empty-msg">Sin ingresos este mes</p> : (
+        <div className="donut-wrap">
+          <ResponsiveContainer width="100%" height={190}>
+            <PieChart>
+              <Pie data={ingresos} dataKey="monto" nameKey="concepto" innerRadius={54} outerRadius={80} paddingAngle={3} stroke="none">
+                {ingresos.map((e, i) => <Cell key={i} fill={COLOR_INGRESO[e.concepto] || C.gold} />)}
+              </Pie>
+              <Tooltip {...CHART_TOOLTIP} formatter={(v, n) => [`Bs. ${fmt(v)}`, n]} />
+            </PieChart>
+          </ResponsiveContainer>
+          <ul className="donut-legend">
+            {ingresos.map((e) => (
+              <li key={e.concepto}>
+                <span className="dot" style={{ background: COLOR_INGRESO[e.concepto] || C.gold }} />
+                {e.concepto}<em>{e.pct}%</em>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─── BI: Egresos por categoría (barra horizontal, un solo hue) ──────────────
+function EgresosBarChart({ egresos }) {
+  const top = egresos.slice(0, 8);
+  const alto = Math.max(38 * top.length, 100);
+  return (
+    <section className="section">
+      <div className="section-header"><h2 className="section-title">Egresos por categoría</h2></div>
+      {top.length === 0 ? <p className="empty-msg">Sin egresos este mes</p> : (
+        <ResponsiveContainer width="100%" height={alto}>
+          <BarChart data={top} layout="vertical" margin={{ top: 4, right: 46, left: 0, bottom: 4 }}>
+            <XAxis type="number" hide />
+            <YAxis type="category" dataKey="categoria" tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} width={92} />
+            <Tooltip {...CHART_TOOLTIP} formatter={(v) => `Bs. ${fmt(v)}`} />
+            <Bar dataKey="monto" fill={C.gold} radius={[0, 3, 3, 0]} barSize={16}>
+              <LabelList dataKey="monto" position="right" formatter={(v) => `Bs. ${fmt(v)}`} fill={C.textDim} fontSize={11} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+    </section>
+  );
+}
+
+// ─── BI: Top deudores (barra horizontal, un solo hue rojo) ──────────────────
+function DeudoresBarChart({ deudaReal }) {
+  const top = deudaReal.slice(0, 8);
+  const alto = Math.max(38 * top.length, 100);
+  return (
+    <section className="section">
+      <div className="section-header"><h2 className="section-title">Top deudores</h2></div>
+      {top.length === 0 ? <p className="empty-msg">Todos los locales están al día. 🎉</p> : (
+        <ResponsiveContainer width="100%" height={alto}>
+          <BarChart data={top} layout="vertical" margin={{ top: 4, right: 56, left: 0, bottom: 4 }}>
+            <XAxis type="number" hide />
+            <YAxis type="category" dataKey="local" tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} width={72} />
+            <Tooltip {...CHART_TOOLTIP} formatter={(v, n, p) => [`Bs. ${fmt(v)}`, p.payload.inquilino]} />
+            <Bar dataKey="total" fill={C.red} radius={[0, 3, 3, 0]} barSize={16}>
+              <LabelList dataKey="total" position="right" formatter={(v) => `Bs. ${fmt(v)}`} fill={C.textDim} fontSize={11} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+    </section>
+  );
+}
+
 // ─── Drawer ──────────────────────────────────────────────────────────────────
 function Drawer({ open, onClose, type, payload }) {
   useEffect(() => {
@@ -767,6 +900,7 @@ const TABS = [
   { id: "resumen", label: "Resumen", icon: "◎" },
   { id: "cobros", label: "Cobros", icon: "◆" },
   { id: "resultados", label: "Resultados", icon: "▤" },
+  { id: "bi", label: "BI", icon: "◈" },
   { id: "actividad", label: "Actividad", icon: "◷" },
 ];
 
@@ -842,7 +976,7 @@ export default function App() {
             <h1 className="header-title">{edificio.nombre}</h1>
           </div>
           <div className="header-right">
-            {(tab === "resumen" || tab === "resultados") && (
+            {(tab === "resumen" || tab === "resultados" || tab === "bi") && (
               <MonthNav mes={mes} anio={anio} onChange={(m, a) => { setMes(m); setAnio(a); }} />
             )}
             <button
@@ -893,6 +1027,15 @@ export default function App() {
               <>
                 <ResultadosSection resultados={data.resultados} />
                 <GastosDetalleSection gastos={data.gastos} />
+              </>
+            )}
+
+            {tab === "bi" && (
+              <>
+                <TendenciaChart tendencia={data.tendencia} />
+                <IngresosDonut ingresos={data.resultados.ingresos} />
+                <EgresosBarChart egresos={data.resultados.egresosPorCategoria} />
+                <DeudoresBarChart deudaReal={data.deudaReal} />
               </>
             )}
 
