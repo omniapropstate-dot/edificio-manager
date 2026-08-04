@@ -9,6 +9,18 @@ const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto
 
 const ICONOS_EVENTO = { pago: "💰", gasto: "🧾", contrato: "📋", inquilino: "👤", mantenimiento: "🔧" };
 
+function fechaCorta(iso) {
+  if (!iso) return "";
+  const [, m, d] = iso.split("-").map(Number);
+  return `${d} ${MONTHS[m - 1].slice(0, 3).toLowerCase()}`;
+}
+
+const ETIQUETA_FECHA = {
+  hoy: (f) => `Vence hoy`,
+  retrasado: (f) => `Retrasado desde ${fechaCorta(f)}`,
+  proximo: (f) => `Próximo: ${fechaCorta(f)}`,
+};
+
 function tiempoRelativo(iso) {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
   if (diff < 60) return "hace un momento";
@@ -332,7 +344,11 @@ function DeudaRealSection({ deudaReal, totalDeudaReal, onOpen }) {
                   </div>
                   <div className="moroso-right">
                     <span className="moroso-monto">Bs. {fmt(r.total)}</span>
-                    <span className="moroso-codigo">{periodos} período{periodos !== 1 ? "s" : ""}</span>
+                    {r.estado_fecha ? (
+                      <span className={`moroso-estado estado-${r.estado_fecha}`}>{ETIQUETA_FECHA[r.estado_fecha](r.fecha_esperada)}</span>
+                    ) : (
+                      <span className="moroso-codigo">{periodos} período{periodos !== 1 ? "s" : ""}</span>
+                    )}
                   </div>
                 </li>
               );
@@ -644,6 +660,9 @@ function Drawer({ open, onClose, type, payload }) {
     title = `${r.local} — ${r.inquilino}`;
     content = (
       <div className="drawer-detail">
+        {r.estado_fecha && (
+          <div className="detail-row"><span>Debería pagar</span><span className={`estado-${r.estado_fecha}`}>{ETIQUETA_FECHA[r.estado_fecha](r.fecha_esperada)}</span></div>
+        )}
         {r.debe_alquiler > 0 && <div className="detail-row"><span>Alquiler</span><span className="red">Bs. {fmt(r.debe_alquiler)}</span></div>}
         {r.meses_alquiler.length > 0 && <div className="detail-row small"><span>Meses</span><span>{r.meses_alquiler.join(", ")}</span></div>}
         {r.debe_expensa > 0 && <div className="detail-row"><span>Expensa</span><span className="red">Bs. {fmt(r.debe_expensa)}</span></div>}
