@@ -15,6 +15,7 @@ const CHART_TOOLTIP = {
   cursor: { fill: "rgba(255,255,255,0.04)" },
 };
 const fmtCompacto = (n) => (Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+const truncar = (s, n) => (s && s.length > n ? s.slice(0, n - 1) + "…" : s ?? "");
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 const fmt = (n) =>
@@ -628,7 +629,7 @@ function TendenciaChart({ tendencia }) {
         </div>
       </div>
       <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={tendencia} margin={{ top: 8, right: 4, left: -20, bottom: 0 }} barGap={3}>
+        <BarChart data={tendencia} margin={{ top: 8, right: 4, left: 0, bottom: 0 }} barGap={3}>
           <CartesianGrid stroke={C.border} vertical={false} />
           <XAxis dataKey="mes_nombre" tick={{ fill: C.textDim, fontSize: 11 }} axisLine={{ stroke: C.border }} tickLine={false} />
           <YAxis tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={fmtCompacto} width={40} />
@@ -689,12 +690,12 @@ function EgresosBarChart({ egresos }) {
       <div className="section-header"><h2 className="section-title">Egresos por categoría</h2></div>
       {top.length === 0 ? <p className="empty-msg">Sin egresos este mes</p> : (
         <ResponsiveContainer width="100%" height={alto}>
-          <BarChart data={top} layout="vertical" margin={{ top: 4, right: 46, left: 0, bottom: 4 }}>
+          <BarChart data={top} layout="vertical" margin={{ top: 4, right: 32, left: 0, bottom: 4 }}>
             <XAxis type="number" hide />
-            <YAxis type="category" dataKey="categoria" tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} width={92} />
+            <YAxis type="category" dataKey="categoria" tickFormatter={(v) => truncar(v, 11)} tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} width={78} />
             <Tooltip {...CHART_TOOLTIP} formatter={(v) => `Bs. ${fmt(v)}`} />
             <Bar dataKey="monto" fill={C.gold} radius={[0, 3, 3, 0]} barSize={16}>
-              <LabelList dataKey="monto" position="right" formatter={(v) => `Bs. ${fmt(v)}`} fill={C.textDim} fontSize={11} />
+              <LabelList dataKey="monto" position="right" formatter={fmtCompacto} fill={C.textDim} fontSize={11} />
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -712,12 +713,12 @@ function DeudoresBarChart({ deudaReal }) {
       <div className="section-header"><h2 className="section-title">Top deudores</h2></div>
       {top.length === 0 ? <p className="empty-msg">Todos los locales están al día. 🎉</p> : (
         <ResponsiveContainer width="100%" height={alto}>
-          <BarChart data={top} layout="vertical" margin={{ top: 4, right: 56, left: 0, bottom: 4 }}>
+          <BarChart data={top} layout="vertical" margin={{ top: 4, right: 34, left: 0, bottom: 4 }}>
             <XAxis type="number" hide />
-            <YAxis type="category" dataKey="local" tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} width={72} />
+            <YAxis type="category" dataKey="local" tickFormatter={(v) => truncar(v, 9)} tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} width={62} />
             <Tooltip {...CHART_TOOLTIP} formatter={(v, n, p) => [`Bs. ${fmt(v)}`, p.payload.inquilino]} />
             <Bar dataKey="total" fill={C.red} radius={[0, 3, 3, 0]} barSize={16}>
-              <LabelList dataKey="total" position="right" formatter={(v) => `Bs. ${fmt(v)}`} fill={C.textDim} fontSize={11} />
+              <LabelList dataKey="total" position="right" formatter={fmtCompacto} fill={C.textDim} fontSize={11} />
             </Bar>
           </BarChart>
         </ResponsiveContainer>
