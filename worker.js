@@ -100,17 +100,48 @@ async function multasPendientesLista(env, eid) {
   );
 }
 
+// Día del mes del pago "pagado" más reciente por contrato (cualquier tipo,
+// alquiler o expensa) — base para calcular cuándo debería pagar este mes.
+async function ultimoPagoPorContrato(env, eid) {
+  const rows = await sb(
+    env,
+    `pagos?select=contrato_id,fecha_pago&edificio_id=eq.${eid}&estado=eq.pagado&fecha_pago=not.is.null&order=fecha_pago.desc`
+  );
+  const mapa = new Map();
+  for (const p of rows) {
+    if (!mapa.has(p.contrato_id)) mapa.set(p.contrato_id, p.fecha_pago); // primero visto = más reciente (order desc)
+  }
+  return mapa;
+}
+
+// Repite el día del último pago en el mes actual (con tope a los días que tenga
+// el mes) y compara contra hoy: proximo (todavía no llega) / hoy / retrasado.
+function calcularFechaEsperada(ultimoPagoFecha) {
+  if (!ultimoPagoFecha) return { fecha_esperada: null, estado_fecha: null };
+  const dia = Number(ultimoPagoFecha.split("-")[2]);
+  const { mes, anio } = mesAnioBolivia();
+  const diasEnMes = new Date(Date.UTC(anio, mes, 0)).getUTCDate();
+  const diaClamp = Math.min(dia, diasEnMes);
+  const fecha = `${anio}-${String(mes).padStart(2, "0")}-${String(diaClamp).padStart(2, "0")}`;
+  const hoy = hoyBolivia();
+  const estado = hoy < fecha ? "proximo" : hoy === fecha ? "hoy" : "retrasado";
+  return { fecha_esperada: fecha, estado_fecha: estado };
+}
+
 // Combina morosos (alquiler/expensa con arrastre) y multas pendientes en una
-// fila por local, con el monto desglosado (alquiler, expensa, multas) y total.
+// fila por local, con el monto desglosado (alquiler, expensa, multas), total,
+// y la fecha en la que debería pagar este mes según su patrón histórico.
 async function calcularDeudaTotal(env, eid) {
-  const [morosos, multas] = await Promise.all([
+  const [morosos, multas, ultimoPagoMap] = await Promise.all([
     calcularDeudaReal(env, eid),
     multasPendientesLista(env, eid),
+    ultimoPagoPorContrato(env, eid),
   ]);
 
   const mapa = new Map();
   for (const m of morosos) {
     mapa.set(m.contrato_id, {
+      contrato_id: m.contrato_id,
       local: m.local, inquilino: m.inquilino,
       debe_alquiler: m.debe_alquiler, debe_expensa: m.debe_expensa,
       meses_alquiler: m.meses_alquiler, meses_expensa: m.meses_expensa,
@@ -120,6 +151,7 @@ async function calcularDeudaTotal(env, eid) {
   for (const mu of multas) {
     if (!mapa.has(mu.contrato_id)) {
       mapa.set(mu.contrato_id, {
+        contrato_id: mu.contrato_id,
         local: mu.contratos?.unidades?.codigo || "—",
         inquilino: mu.contratos?.inquilinos?.nombre || "—",
         debe_alquiler: 0, debe_expensa: 0,
@@ -133,7 +165,11 @@ async function calcularDeudaTotal(env, eid) {
   }
 
   return [...mapa.values()]
-    .map((r) => ({ ...r, total: r.debe_alquiler + r.debe_expensa + r.debe_multas }))
+    .map((r) => ({
+      ...r,
+      total: r.debe_alquiler + r.debe_expensa + r.debe_multas,
+      ...calcularFechaEsperada(ultimoPagoMap.get(r.contrato_id)),
+    }))
     .sort((a, b) => b.total - a.total);
 }
 
