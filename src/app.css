@@ -59,7 +59,7 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
   background: rgba(16,14,12,0.92);
   backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border);
-  padding: 16px 20px 14px;
+  padding: 16px 20px 0;
 }
 
 .header-top {
@@ -67,6 +67,7 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  padding-bottom: 14px;
 }
 
 .header-eyebrow {
@@ -106,6 +107,47 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
 }
 .export-btn:hover { background: rgba(212,168,75,0.1); border-color: var(--gold); }
 .export-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── Tab bar ───────────────────────────────────────────────────────────── */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 12px;
+}
+.tab-bar::-webkit-scrollbar { display: none; }
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 7px 13px;
+  border-radius: 100px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  transition: background 0.15s var(--ease), color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.tab-btn.active {
+  color: var(--bg);
+  background: var(--gold);
+  border-color: var(--gold);
+}
+.tab-icon { font-size: 0.8rem; line-height: 1; opacity: 0.85; }
+
+.tab-badge {
+  background: rgba(224,85,85,0.18);
+  color: var(--red);
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 100px;
+}
+.tab-btn.active .tab-badge { background: rgba(16,14,12,0.2); color: var(--bg); }
 
 /* ── Month nav ─────────────────────────────────────────────────────────── */
 .month-nav {
@@ -178,9 +220,12 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
   animation: cardIn 0.5s var(--ease) both;
   animation-delay: calc(var(--i, 0) * 80ms);
 }
+.kpi-card-wide { grid-column: 1 / -1; }
 
 .kpi-card:active { transform: scale(0.97); }
 .kpi-card:hover { border-color: var(--accent, var(--gold)); }
+.kpi-card:disabled { cursor: default; }
+.kpi-card:disabled:active { transform: none; }
 
 .kpi-label {
   font-size: 0.7rem;
@@ -266,6 +311,12 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
 
 .badge-red { color: var(--red); }
 
+.section-note {
+  margin-top: 12px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
 /* ── Unit Grid ─────────────────────────────────────────────────────────── */
 .unit-grid {
   display: grid;
@@ -316,7 +367,7 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
 .dot-moroso  { background: var(--red); }
 .dot-libre   { background: var(--text-muted); }
 
-/* ── Morosos List ──────────────────────────────────────────────────────── */
+/* ── Morosos / Deuda real List ─────────────────────────────────────────── */
 .moroso-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
 
 .moroso-item {
@@ -384,7 +435,7 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
 }
 .toggle-btn.active { background: var(--surface); color: var(--gold); }
 
-/* ── Gastos chart ──────────────────────────────────────────────────────── */
+/* ── Barras de % (ingresos / egresos) ─────────────────────────────────── */
 .cat-bars { display: flex; flex-direction: column; gap: 10px; }
 
 .cat-row {
@@ -409,8 +460,10 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
   border-radius: 100px;
   transition: width 0.8s var(--ease);
 }
+.cat-bar-fill.cat-bar-green { background: var(--green); }
 
 .cat-amount { font-size: 0.75rem; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.cat-amount em { font-style: normal; font-weight: 500; color: var(--text-muted); margin-left: 4px; }
 
 .gasto-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
 
@@ -426,6 +479,64 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
 .gasto-monto { font-size: 0.85rem; font-weight: 600; color: var(--amber); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 .empty-msg { font-size: 0.8rem; color: var(--text-muted); text-align: center; padding: 16px 0; }
+
+/* ── Feed de actividad ─────────────────────────────────────────────────── */
+.feed-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+
+.feed-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.feed-icon {
+  flex-shrink: 0;
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface2);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.feed-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.feed-title { font-size: 0.8rem; color: var(--text); line-height: 1.3; }
+.feed-time { font-size: 0.68rem; color: var(--text-muted); }
+
+.feed-monto {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+  align-self: center;
+}
+
+/* ── Pills (gastos fijos pendientes) ──────────────────────────────────── */
+.pill-list { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; }
+
+.pill-item {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--red);
+  background: rgba(224,85,85,0.12);
+  border: 1px solid rgba(224,85,85,0.25);
+  border-radius: 100px;
+  padding: 6px 12px;
+}
+
+/* ── Prioridad (mantenimiento) ────────────────────────────────────────── */
+.prioridad-pill {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 100px;
+  flex-shrink: 0;
+}
+.prioridad-alta  { background: rgba(224,85,85,0.15);  color: var(--red); }
+.prioridad-media { background: rgba(224,144,48,0.15); color: var(--amber); }
+.prioridad-baja  { background: rgba(76,184,122,0.15); color: var(--green); }
 
 /* ── Drawer ────────────────────────────────────────────────────────────── */
 .drawer-overlay {
@@ -509,6 +620,7 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
 .di-nombre { font-size: 0.85rem; font-weight: 600; display: block; }
 .di-sub { font-size: 0.72rem; color: var(--text-dim); display: block; margin-top: 2px; }
 .di-monto { font-size: 0.9rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.di-monto.amber { color: var(--amber); }
 
 .drawer-detail { display: flex; flex-direction: column; gap: 2px; }
 
@@ -523,7 +635,10 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
 .detail-row > span:first-child { color: var(--text-dim); }
 .detail-row > span:last-child { font-weight: 600; }
 .detail-row.big { font-size: 1rem; }
+.detail-row.small { font-size: 0.72rem; padding: 6px 0; }
+.detail-row.small > span:last-child { font-weight: 500; text-align: right; max-width: 65%; }
 .detail-row.border-top { border-top: 1px solid var(--border); border-bottom: none; margin-top: 4px; }
 
 .green { color: var(--green); }
 .red   { color: var(--red); }
+.amber { color: var(--amber); }
