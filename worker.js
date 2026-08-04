@@ -263,6 +263,47 @@ async function actividadReciente(env, eid) {
   return eventos.slice(0, 40);
 }
 
+// ─── TENDENCIA MENSUAL (últimos 12 meses, para la tab de BI) ────────────────
+function ultimos12Meses() {
+  const { mes, anio } = mesAnioBolivia();
+  const periodos = [];
+  let m = mes, y = anio;
+  for (let i = 0; i < 12; i++) {
+    periodos.unshift({ mes: m, anio: y });
+    m--; if (m < 1) { m = 12; y--; }
+  }
+  return periodos; // más viejo → más nuevo
+}
+
+async function tendenciaMensual(env, eid) {
+  const periodos = ultimos12Meses();
+  const primerAnio = periodos[0].anio;
+
+  const [pagos, gastos] = await Promise.all([
+    sb(env, `pagos?select=mes,anio,monto&edificio_id=eq.${eid}&estado=eq.pagado&anio=gte.${primerAnio}`),
+    sb(env, `gastos?select=mes,anio,monto&edificio_id=eq.${eid}&anio=gte.${primerAnio}`),
+  ]);
+
+  const key = (mes, anio) => `${anio}-${mes}`;
+  const ingMap = new Map();
+  const egMap = new Map();
+  for (const p of pagos) {
+    const k = key(p.mes, p.anio);
+    ingMap.set(k, (ingMap.get(k) || 0) + Number(p.monto));
+  }
+  for (const g of gastos) {
+    const k = key(g.mes, g.anio);
+    egMap.set(k, (egMap.get(k) || 0) + Number(g.monto));
+  }
+
+  return periodos.map(({ mes, anio }) => {
+    const k = key(mes, anio);
+    const ingresos = ingMap.get(k) || 0;
+    const egresos = egMap.get(k) || 0;
+    return { mes, anio, mes_nombre: MESES[mes].slice(0, 3), ingresos, egresos, neto: ingresos - egresos };
+  });
+}
+
 async function mantenimientoPendiente(env, eid) {
   return sb(
     env,
@@ -314,13 +355,10 @@ async function handleDashboard(request, env) {
   if (!edificio) return json({ error: "unauthorized" }, 401);
 
   if (url.searchParams.get("latest") === "1") {
-    const rows = await sb(
-      env,
-      `pagos?select=mes,anio&edificio_id=eq.${edificio.id}&order=anio.desc,mes.desc&limit=1`
-    );
-    const now = new Date();
-    const latest = rows[0] || { mes: now.getMonth() + 1, anio: now.getFullYear() };
-    return json({ edificio, latest });
+    // Siempre el mes actual real de Bolivia — antes buscaba el mes/año del pago
+    // más reciente en la tabla, que podía ser un pago adelantado a futuro (ej.
+    // diciembre) y abría el dashboard en un mes casi vacío por defecto.
+    return json({ edificio, latest: mesAnioBolivia() });
   }
 
   const mes = Number(url.searchParams.get("mes"));
@@ -342,7 +380,7 @@ async function handleDashboard(request, env) {
 
   const [
     pagos, gastos, unidades, contratos, multas,
-    deudaReal, documentos, resultados, actividad, mantenimiento, gastosFijos,
+    deudaReal, documentos, resultados, actividad, mantenimiento, gastosFijos, tendencia,
   ] = await Promise.all([
     sb(env, `pagos?select=${encodeURIComponent(selPagos)}&edificio_id=eq.${edificio.id}&mes=eq.${mes}&anio=eq.${anio}`),
     sb(env, `gastos?select=${encodeURIComponent(selGastos)}&edificio_id=eq.${edificio.id}&mes=eq.${mes}&anio=eq.${anio}`),
@@ -355,11 +393,12 @@ async function handleDashboard(request, env) {
     actividadReciente(env, edificio.id),
     mantenimientoPendiente(env, edificio.id),
     gastosFijosPendientes(env, edificio.id),
+    tendenciaMensual(env, edificio.id),
   ]);
 
   return json({
     edificio, pagos, gastos, unidades, contratos, multas,
-    deudaReal, documentos, resultados, actividad, mantenimiento, gastosFijos,
+    deudaReal, documentos, resultados, actividad, mantenimiento, gastosFijos, tendencia,
   });
 }
 
