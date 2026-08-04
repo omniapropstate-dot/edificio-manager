@@ -17,7 +17,7 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { font-size: 16px; -webkit-tap-highlight-color: transparent; }
+html { font-size: 16px; -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
 
 body {
   background: var(--bg);
@@ -26,6 +26,8 @@ body {
   font-feature-settings: "cv02","cv03","cv04","tnum";
   min-height: 100dvh;
   overscroll-behavior: none;
+  overflow-x: hidden;
+  width: 100%;
 }
 
 button { cursor: pointer; border: none; background: none; font: inherit; color: inherit; }
@@ -51,7 +53,7 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
 .denied-msg { color: var(--text-dim); font-size: 0.9rem; }
 
 /* ── App layout ────────────────────────────────────────────────────────── */
-.app { max-width: 600px; margin: 0 auto; }
+.app { max-width: 600px; margin: 0 auto; overflow-x: hidden; }
 
 /* ── Header ────────────────────────────────────────────────────────────── */
 .app-header {
@@ -113,8 +115,11 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
   display: flex;
   gap: 4px;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   padding-bottom: 12px;
+  mask-image: linear-gradient(to right, black calc(100% - 24px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 24px), transparent 100%);
 }
 .tab-bar::-webkit-scrollbar { display: none; }
 
@@ -383,8 +388,8 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
 }
 .moroso-item:hover { background: rgba(255,255,255,0.06); }
 
-.moroso-info { display: flex; flex-direction: column; gap: 2px; }
-.moroso-nombre { font-size: 0.85rem; font-weight: 600; }
+.moroso-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow: hidden; }
+.moroso-nombre { font-size: 0.85rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .moroso-codigo { font-size: 0.72rem; color: var(--text-dim); }
 
 .moroso-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
@@ -420,7 +425,15 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
 .ver-mas:hover { background: rgba(212,168,75,0.1); }
 
 /* ── Tablas de desglose (deuda real, documentos) ──────────────────────── */
-.table-scroll { overflow-x: auto; margin: 0 -16px; padding: 0 16px; }
+/* Contenido dentro del padding de la card (nada de márgenes negativos que
+   puedan romper el borde redondeado en mobile). Fade a la derecha = hay más
+   columnas, deslizá. */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+}
 .table-scroll::-webkit-scrollbar { height: 4px; }
 
 .deuda-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; white-space: nowrap; }
@@ -477,7 +490,7 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
   gap: 10px;
 }
 
-.cat-label { font-size: 0.75rem; color: var(--text-dim); }
+.cat-label { font-size: 0.75rem; color: var(--text-dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .cat-bar-bg {
   height: 6px;
@@ -506,9 +519,10 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
   gap: 12px;
 }
 
-.gasto-concepto { font-size: 0.82rem; display: block; }
-.gasto-cat { font-size: 0.68rem; color: var(--text-dim); display: block; margin-top: 1px; }
-.gasto-monto { font-size: 0.85rem; font-weight: 600; color: var(--amber); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.gasto-item > div { min-width: 0; overflow: hidden; }
+.gasto-concepto { font-size: 0.82rem; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gasto-cat { font-size: 0.68rem; color: var(--text-dim); display: block; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gasto-monto { flex-shrink: 0; font-size: 0.85rem; font-weight: 600; color: var(--amber); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 .empty-msg { font-size: 0.8rem; color: var(--text-muted); text-align: center; padding: 16px 0; }
 
@@ -656,9 +670,10 @@ button { cursor: pointer; border: none; background: none; font: inherit; color: 
   border-radius: 10px;
 }
 
-.di-nombre { font-size: 0.85rem; font-weight: 600; display: block; }
-.di-sub { font-size: 0.72rem; color: var(--text-dim); display: block; margin-top: 2px; }
-.di-monto { font-size: 0.9rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.drawer-item > div { min-width: 0; overflow: hidden; }
+.di-nombre { font-size: 0.85rem; font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.di-sub { font-size: 0.72rem; color: var(--text-dim); display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.di-monto { flex-shrink: 0; font-size: 0.9rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .di-monto.amber { color: var(--amber); }
 
 .drawer-detail { display: flex; flex-direction: column; gap: 2px; }
